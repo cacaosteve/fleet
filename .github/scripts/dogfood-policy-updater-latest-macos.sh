@@ -78,7 +78,7 @@ for a in assets:
 majors = sorted(by_major.keys(), reverse=True)[:2]
 now = datetime.now(timezone.utc)
 
-def floors(grace_days):
+def floors_with_major(grace_days):
     out = []
     for major in majors:
         best = {}
@@ -103,21 +103,25 @@ def floors(grace_days):
             age = now - latest_posted
             if age.total_seconds() < grace_days * 24 * 3600:
                 required = ordered[1][0]
-        out.append(required)
+        out.append((major, required))
     return out
 
 def query(floors_list):
+    # floors_list is [(major, version), ...]
     if not floors_list:
         return ""
-    clauses = " OR ".join(f"version >= '{v}'" for v in floors_list)
+    clauses = " OR ".join(
+        f"(major = {major} AND version_compare(version, '{version}') >= 0)"
+        for major, version in floors_list
+    )
     return f"SELECT 1 FROM os_version WHERE {clauses};"
 
-up = floors(0)
-acc = floors(30)
+up = floors_with_major(0)
+acc = floors_with_major(30)
 print("UP_TO_DATE_QUERY=" + shlex.quote(query(up)))
 print("ACCEPTABLE_QUERY=" + shlex.quote(query(acc)))
-print("LATEST_FLOORS=" + shlex.quote(",".join(up)))
-print("ACCEPTABLE_FLOORS=" + shlex.quote(",".join(acc)))
+print("LATEST_FLOORS=" + shlex.quote(",".join(v for _, v in up)))
+print("ACCEPTABLE_FLOORS=" + shlex.quote(",".join(v for _, v in acc)))
 PY
 )"
 

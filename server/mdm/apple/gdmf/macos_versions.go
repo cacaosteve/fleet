@@ -132,20 +132,46 @@ func RequiredMacOSVersions(assets []Asset, graceDays int, now time.Time) []Versi
 }
 
 // PolicyQuery builds the osquery SQL for a macOS OS-currency policy from version floors.
+//
+// Each floor is scoped to its major so lexicographic OR across majors cannot
+// let an outdated newer-major host pass (e.g. 26.0.0 must not satisfy
+// version >= '15.7.5'). version_compare handles multi-digit components correctly.
 func PolicyQuery(floors []VersionFloor) string {
 	if len(floors) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("SELECT 1 FROM os_version WHERE ")
-	for i, f := range floors {
-		if i > 0 {
+	first := true
+	for _, f := range floors {
+		if f.Major <= 0 || f.Version == "" || !safeOSVersion(f.Version) {
+			continue
+		}
+		if !first {
 			b.WriteString(" OR ")
 		}
-		fmt.Fprintf(&b, "version >= '%s'", f.Version)
+		first = false
+		fmt.Fprintf(&b, "(major = %d AND version_compare(version, '%s') >= 0)", f.Major, f.Version)
+	}
+	if first {
+		return ""
 	}
 	b.WriteByte(';')
 	return b.String()
+}
+
+// safeOSVersion reports whether version is safe to embed in single-quoted
+// osquery SQL (digits and dots only).
+func safeOSVersion(version string) bool {
+	if version == "" {
+		return false
+	}
+	for _, r := range version {
+		if (r < '0' || r > '9') && r != '.' {
+			return false
+		}
+	}
+	return true
 }
 
 // MacOSAssetsForCurrencyPolicies returns the asset list to use when computing

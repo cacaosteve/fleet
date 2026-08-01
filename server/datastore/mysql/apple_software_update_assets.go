@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/fleetdm/fleet/v4/server/contexts/ctxerr"
@@ -20,27 +21,22 @@ func (ds *Datastore) ReplaceAppleSoftwareUpdateAssets(ctx context.Context, class
 			return nil
 		}
 
-		const stmt = `
-INSERT INTO apple_software_update_assets
-  (class, product_version, build, posting_date, expiration_date, supported_devices)
-VALUES
-  (?, ?, ?, ?, ?, ?)
-`
+		valueStrings := make([]string, 0, len(assets))
+		args := make([]interface{}, 0, len(assets)*6)
 		for _, a := range assets {
 			devices := a.SupportedDevices
 			if len(devices) == 0 || !json.Valid(devices) {
 				devices = []byte("[]")
 			}
-			if _, err := tx.ExecContext(ctx, stmt,
-				class,
-				a.ProductVersion,
-				a.Build,
-				a.PostingDate,
-				a.ExpirationDate,
-				devices,
-			); err != nil {
-				return ctxerr.Wrap(ctx, err, "insert apple software update asset")
-			}
+			valueStrings = append(valueStrings, "(?, ?, ?, ?, ?, ?)")
+			args = append(args, class, a.ProductVersion, a.Build, a.PostingDate, a.ExpirationDate, devices)
+		}
+		stmt := `
+INSERT INTO apple_software_update_assets
+  (class, product_version, build, posting_date, expiration_date, supported_devices)
+VALUES ` + strings.Join(valueStrings, ", ")
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
+			return ctxerr.Wrap(ctx, err, "insert apple software update assets")
 		}
 		return nil
 	})

@@ -68,6 +68,9 @@ func SyncMacOSCurrencyPolicies(ctx context.Context, ds fleet.Datastore, logger *
 }
 
 func replaceMacOSAssets(ctx context.Context, ds fleet.Datastore, meta *AssetMetadata) error {
+	if meta == nil {
+		return ctxerr.New(ctx, "GDMF asset metadata is nil")
+	}
 	// Prefer AssetSets (fuller history); fall back to PublicAssetSets.
 	src := meta.AssetSets.MacOS
 	if len(src) == 0 {

@@ -1262,7 +1262,7 @@ apiVersion: v1
 kind: policy
 spec:
   name: Operating system up to date (macOS)
-  query: SELECT 1 FROM os_version WHERE version >= '26.6' OR version >= '15.7.8';
+  query: SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.6') >= 0) OR (major = 15 AND version_compare(version, '15.7.8') >= 0);
   description: "Checks that the Mac is on the latest macOS for its major version track (current major or previous major for older hardware). Fleet keeps this policy's version floors up to date from Apple's software update catalog (GDMF)."
   resolution: "From the Apple menu () choose System Settings > General > Software Update, then install available updates. You might be asked to restart or enter your password."
   tags: compliance, CIS, CIS1.1, critical, fleet-maintained, gdmf
@@ -1273,7 +1273,7 @@ apiVersion: v1
 kind: policy
 spec:
   name: Operating system version is acceptable (macOS)
-  query: SELECT 1 FROM os_version WHERE version >= '26.5.2' OR version >= '15.7.7';
+  query: SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.5.2') >= 0) OR (major = 15 AND version_compare(version, '15.7.7') >= 0);
   description: "Checks that the Mac is on an acceptable macOS version: the latest for its major track, or the previous point release while a newer release is less than 30 days old. Fleet keeps this policy's version floors up to date from Apple's software update catalog (GDMF)."
   resolution: "From the Apple menu () choose System Settings > General > Software Update, then install available updates. You might be asked to restart or enter your password."
   tags: compliance, critical, fleet-maintained, gdmf

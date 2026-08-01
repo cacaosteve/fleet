@@ -57,11 +57,11 @@ func TestSyncMacOSCurrencyPolicies(t *testing.T) {
 	require.Len(t, replaced, 4)
 
 	require.Equal(t,
-		"SELECT 1 FROM os_version WHERE version >= '26.4.1' OR version >= '15.7.5';",
+		"SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.4.1') >= 0) OR (major = 15 AND version_compare(version, '15.7.5') >= 0);",
 		updated[PolicyNameUpToDate],
 	)
 	require.Equal(t,
-		"SELECT 1 FROM os_version WHERE version >= '26.4.0' OR version >= '15.7.4';",
+		"SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.4.0') >= 0) OR (major = 15 AND version_compare(version, '15.7.4') >= 0);",
 		updated[PolicyNameAcceptable],
 	)
 	require.Equal(t, updated[PolicyNameUpToDate], updated[DogfoodPolicyNameUpToDate])

@@ -29,7 +29,7 @@ func TestRequiredMacOSVersions(t *testing.T) {
 			{Major: 15, Version: "15.7.5"},
 		}, floors)
 		require.Equal(t,
-			"SELECT 1 FROM os_version WHERE version >= '26.4.1' OR version >= '15.7.5';",
+			"SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.4.1') >= 0) OR (major = 15 AND version_compare(version, '15.7.5') >= 0);",
 			PolicyQuery(floors),
 		)
 	})
@@ -126,4 +126,17 @@ func TestMacOSCurrencyPolicies(t *testing.T) {
 	require.Len(t, policies, 4)
 	require.Equal(t, GraceDaysUpToDate, policies[0].GraceDays)
 	require.Equal(t, GraceDaysAcceptable, policies[1].GraceDays)
+	require.Equal(t, GraceDaysUpToDate, policies[2].GraceDays)
+	require.Equal(t, GraceDaysAcceptable, policies[3].GraceDays)
+}
+
+func TestPolicyQueryRejectsUnsafeVersions(t *testing.T) {
+	require.Empty(t, PolicyQuery([]VersionFloor{{Major: 15, Version: "15.7.5' OR '1'='1"}}))
+	require.Equal(t,
+		"SELECT 1 FROM os_version WHERE (major = 15 AND version_compare(version, '15.7.5') >= 0);",
+		PolicyQuery([]VersionFloor{
+			{Major: 15, Version: "15.7.5' OR '1'='1"},
+			{Major: 15, Version: "15.7.5"},
+		}),
+	)
 }
