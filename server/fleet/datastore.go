@@ -1458,8 +1458,8 @@ type Datastore interface {
 	AppleSoftwareUpdateAssetsUpdatedAt(ctx context.Context, class AppleSoftwareUpdateAssetClass) (*time.Time, error)
 
 	// UpdateFleetManagedPolicyQueries sets query for every policy with the given
-	// fleet_managed_key when the query differs, and resets memberships/stats for
-	// those policies in the same transaction.
+	// fleet_managed_key when the query differs, then resets memberships/stats
+	// after commit (using needs_full_membership_cleanup for recovery).
 	UpdateFleetManagedPolicyQueries(ctx context.Context, fleetManagedKey string, query string) (updatedIDs []uint, err error)
 
 	///////////////////////////////////////////////////////////////////////////////

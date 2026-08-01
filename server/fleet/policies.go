@@ -145,6 +145,9 @@ var (
 	errPolicyPlatformUpdated                         = errors.New("\"platform\" can't be updated")
 	errPolicyConditionalAccessEnabledInvalidPlatform = errors.New("\"conditional_access_enabled\" is only valid on \"darwin\" and \"windows\" policies")
 	errPolicyFMASlugRequiresPatch                    = errors.New("\"fleet_maintained_app_slug\" is only supported for patch policies")
+	errPolicyInvalidFleetManagedKey                  = errors.New("invalid \"fleet_managed_key\"")
+	errPolicyFleetManagedKeyPlatform                 = errors.New("\"fleet_managed_key\" requires platform \"darwin\"")
+	errPolicyFleetManagedKeyType                     = errors.New("\"fleet_managed_key\" is only supported for dynamic policies")
 )
 
 // PolicyNoTeamID is the team ID of "No team" policies.
@@ -667,8 +670,9 @@ type PolicySpec struct {
 
 	// FleetManagedKey marks policies whose query Fleet owns and may rewrite
 	// (for example macOS OS-currency policies driven by Apple's GDMF catalog).
-	// Empty means user-owned. Ownership is never inferred from the policy name;
-	// GitOps/API must set this field explicitly.
+	// Empty means user-owned and clears any previously set key on apply.
+	// Ownership is never inferred from the policy name; GitOps/API must set
+	// this field explicitly to one of the known Fleet-managed keys.
 	FleetManagedKey string `json:"fleet_managed_key,omitempty"`
 }
 
@@ -722,7 +726,31 @@ func (p PolicySpec) Verify() error {
 	if p.Type != PolicyTypePatch && p.FleetMaintainedAppSlug != "" {
 		return errPolicyFMASlugRequiresPatch
 	}
+	if err := verifyFleetManagedKey(p.FleetManagedKey, p.Platform, p.Type); err != nil {
+		return err
+	}
 	return p.VerifyLabelScopes()
+}
+
+// verifyFleetManagedKey ensures ownership keys are known and only applied to
+// dynamic darwin policies (the only ones the GDMF cron rewrites today).
+func verifyFleetManagedKey(key, platform, typ string) error {
+	if key == "" {
+		return nil
+	}
+	switch key {
+	case FleetManagedKeyMacOSUpToDate, FleetManagedKeyMacOSAcceptable:
+		// OK
+	default:
+		return errPolicyInvalidFleetManagedKey
+	}
+	if typ != "" && typ != PolicyTypeDynamic {
+		return errPolicyFleetManagedKeyType
+	}
+	if platform != "darwin" {
+		return errPolicyFleetManagedKeyPlatform
+	}
+	return nil
 }
 
 // VerifyLabelScopes checks that the spec's label scopes are valid: at most one

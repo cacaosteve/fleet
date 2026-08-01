@@ -398,8 +398,10 @@ func (ds *Datastore) SavePolicy(ctx context.Context, p *fleet.Policy, shouldRemo
 }
 
 // UpdateFleetManagedPolicyQueries updates the query for every policy with the
-// given fleet_managed_key when it differs, and resets memberships/stats for
-// those policies in the same transaction.
+// given fleet_managed_key when it differs. Membership/stats cleanup runs after
+// commit (same pattern as ApplyPolicySpecs) so large policy_membership deletes
+// do not hold locks for the duration of the update transaction. The
+// needs_full_membership_cleanup flag covers the gap if cleanup is interrupted.
 func (ds *Datastore) UpdateFleetManagedPolicyQueries(ctx context.Context, fleetManagedKey string, query string) ([]uint, error) {
 	if fleetManagedKey == "" {
 		return nil, ctxerr.New(ctx, "fleet_managed_key is required")
@@ -418,7 +420,9 @@ SELECT id FROM policies WHERE fleet_managed_key = ? AND query <> ?
 		}
 		stmt, args, err := sqlx.In(`
 UPDATE policies
-SET query = ?, checksum = `+policiesChecksumComputedColumn()+`
+SET query = ?,
+    checksum = `+policiesChecksumComputedColumn()+`,
+    needs_full_membership_cleanup = 1
 WHERE id IN (?)
 `, query, ids)
 		if err != nil {
@@ -431,14 +435,22 @@ WHERE id IN (?)
 			if err := resetPolicyAutomationAttempts(ctx, tx, id); err != nil {
 				return ctxerr.Wrap(ctx, err, "reset policy automation attempts after GDMF query update")
 			}
-			if err := cleanupPolicy(ctx, tx, tx, id, "", true, true, ds.logger); err != nil {
-				return ctxerr.Wrap(ctx, err, "reset policy memberships after GDMF query update")
-			}
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	dbCtx := ds.writer(ctx)
+	for _, id := range ids {
+		if err := cleanupPolicy(ctx, dbCtx, dbCtx, id, "", true, true, ds.logger); err != nil {
+			return nil, ctxerr.Wrap(ctx, err, "reset policy memberships after GDMF query update")
+		}
+		if _, err := dbCtx.ExecContext(ctx,
+			`UPDATE policies SET needs_full_membership_cleanup = 0 WHERE id = ?`, id); err != nil {
+			return nil, ctxerr.Wrap(ctx, err, "clearing needs_full_membership_cleanup after GDMF query update")
+		}
 	}
 	return ids, nil
 }
@@ -1791,7 +1803,7 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 			type = VALUES(type),
 			patch_software_title_id = VALUES(patch_software_title_id),
 			continuous_automations_enabled = VALUES(continuous_automations_enabled),
-			fleet_managed_key = COALESCE(VALUES(fleet_managed_key), fleet_managed_key)
+			fleet_managed_key = VALUES(fleet_managed_key)
 		`, policiesChecksumComputedColumn(),
 		)
 		for teamID, teamPolicySpecs := range teamIDToPolicies {

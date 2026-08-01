@@ -110,6 +110,38 @@ func TestPolicySpecVerifyFleetMaintainedAppSlug(t *testing.T) {
 			name: "dynamic policy without slug is allowed",
 			spec: PolicySpec{Name: "Chrome installed", Team: "Workstations", Query: "SELECT 1;", Type: PolicyTypeDynamic},
 		},
+		{
+			name: "darwin dynamic with known fleet_managed_key is allowed",
+			spec: PolicySpec{
+				Name: "macOS up to date", Query: "SELECT 1;", Type: PolicyTypeDynamic,
+				Platform: "darwin", FleetManagedKey: FleetManagedKeyMacOSUpToDate,
+			},
+		},
+		{
+			name: "unknown fleet_managed_key is rejected",
+			spec: PolicySpec{
+				Name: "macOS up to date", Query: "SELECT 1;", Type: PolicyTypeDynamic,
+				Platform: "darwin", FleetManagedKey: "not_a_real_key",
+			},
+			wantErr: errPolicyInvalidFleetManagedKey,
+		},
+		{
+			name: "fleet_managed_key on windows is rejected",
+			spec: PolicySpec{
+				Name: "macOS up to date", Query: "SELECT 1;", Type: PolicyTypeDynamic,
+				Platform: "windows", FleetManagedKey: FleetManagedKeyMacOSUpToDate,
+			},
+			wantErr: errPolicyFleetManagedKeyPlatform,
+		},
+		{
+			name: "fleet_managed_key on patch policy is rejected",
+			spec: PolicySpec{
+				Name: "Chrome up to date", Team: "Workstations", Type: PolicyTypePatch,
+				FleetMaintainedAppSlug: "google-chrome/darwin",
+				FleetManagedKey:        FleetManagedKeyMacOSUpToDate,
+			},
+			wantErr: errPolicyFleetManagedKeyType,
+		},
 	}
 
 	for _, tc := range testCases {
