@@ -397,6 +397,42 @@ func (ds *Datastore) SavePolicy(ctx context.Context, p *fleet.Policy, shouldRemo
 	return nil
 }
 
+// UpdatePolicyQueriesByName updates the query for every policy with the given
+// name when it differs. Returns the IDs of policies whose query changed.
+func (ds *Datastore) UpdatePolicyQueriesByName(ctx context.Context, name string, query string) ([]uint, error) {
+	// We must normalize the name for full Unicode support (Unicode equivalence).
+	name = norm.NFC.String(name)
+
+	var ids []uint
+	err := ds.withRetryTxx(ctx, func(tx sqlx.ExtContext) error {
+		ids = nil
+		if err := sqlx.SelectContext(ctx, tx, &ids, `
+SELECT id FROM policies WHERE name = ? AND query <> ?
+`, name, query); err != nil {
+			return ctxerr.Wrap(ctx, err, "select policies by name for query update")
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		stmt, args, err := sqlx.In(`
+UPDATE policies
+SET query = ?, checksum = `+policiesChecksumComputedColumn()+`
+WHERE id IN (?)
+`, query, ids)
+		if err != nil {
+			return ctxerr.Wrap(ctx, err, "build update policy queries by name")
+		}
+		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
+			return ctxerr.Wrap(ctx, err, "update policy queries by name")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func savePolicy(ctx context.Context, db sqlx.ExtContext, logger *slog.Logger, p *fleet.Policy, shouldRemoveAllPolicyMemberships bool, removePolicyStats bool) error {
 	if p.TeamID == nil && p.SoftwareInstallerID != nil {
 		return ctxerr.Wrap(ctx, errSoftwareTitleIDOnGlobalPolicy, "save policy")

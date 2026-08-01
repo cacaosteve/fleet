@@ -1,8 +1,7 @@
 - name: macOS - Operating system up to date
-  query: SELECT 1 FROM os_version WHERE version >= '26.4.1' OR version >= '15.7.5';
+  query: SELECT 1 FROM os_version WHERE version >= '26.6' OR version >= '15.7.8';
   critical: true
-  description: Using an outdated macOS version risks exposure to security vulnerabilities and potential system instability.
+  description: Using an outdated macOS version risks exposure to security vulnerabilities and potential system instability. Fleet keeps these version floors current from Apple's GDMF catalog (grace_days = 0).
   resolution: Please find time to run Software Update.  > System Settings > Software Update
   platform: darwin
   calendar_events_enabled: false
-  

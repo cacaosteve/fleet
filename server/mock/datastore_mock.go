@@ -988,6 +988,12 @@ type UpdateVulnerabilityHostCountsFunc func(ctx context.Context, maxRoutines int
 
 type IsCVEKnownToFleetFunc func(ctx context.Context, cve string) (bool, error)
 
+type ReplaceAppleSoftwareUpdateAssetsFunc func(ctx context.Context, class fleet.AppleSoftwareUpdateAssetClass, assets []fleet.AppleSoftwareUpdateAsset) error
+
+type AppleSoftwareUpdateAssetsUpdatedAtFunc func(ctx context.Context, class fleet.AppleSoftwareUpdateAssetClass) (*time.Time, error)
+
+type UpdatePolicyQueriesByNameFunc func(ctx context.Context, name string, query string) (updatedIDs []uint, err error)
+
 type NewMDMAppleConfigProfileFunc func(ctx context.Context, p fleet.MDMAppleConfigProfile, usesFleetVars []fleet.FleetVarName) (*fleet.MDMAppleConfigProfile, error)
 
 type UpdateMDMAppleConfigProfileFunc func(ctx context.Context, p fleet.MDMAppleConfigProfile, usesFleetVars []fleet.FleetVarName) (*fleet.MDMAppleConfigProfile, error)
@@ -3698,6 +3704,15 @@ type DataStore struct {
 
 	IsCVEKnownToFleetFunc        IsCVEKnownToFleetFunc
 	IsCVEKnownToFleetFuncInvoked bool
+
+	ReplaceAppleSoftwareUpdateAssetsFunc        ReplaceAppleSoftwareUpdateAssetsFunc
+	ReplaceAppleSoftwareUpdateAssetsFuncInvoked bool
+
+	AppleSoftwareUpdateAssetsUpdatedAtFunc        AppleSoftwareUpdateAssetsUpdatedAtFunc
+	AppleSoftwareUpdateAssetsUpdatedAtFuncInvoked bool
+
+	UpdatePolicyQueriesByNameFunc        UpdatePolicyQueriesByNameFunc
+	UpdatePolicyQueriesByNameFuncInvoked bool
 
 	NewMDMAppleConfigProfileFunc        NewMDMAppleConfigProfileFunc
 	NewMDMAppleConfigProfileFuncInvoked bool
@@ -8970,6 +8985,27 @@ func (s *DataStore) IsCVEKnownToFleet(ctx context.Context, cve string) (bool, er
 	s.IsCVEKnownToFleetFuncInvoked = true
 	s.mu.Unlock()
 	return s.IsCVEKnownToFleetFunc(ctx, cve)
+}
+
+func (s *DataStore) ReplaceAppleSoftwareUpdateAssets(ctx context.Context, class fleet.AppleSoftwareUpdateAssetClass, assets []fleet.AppleSoftwareUpdateAsset) error {
+	s.mu.Lock()
+	s.ReplaceAppleSoftwareUpdateAssetsFuncInvoked = true
+	s.mu.Unlock()
+	return s.ReplaceAppleSoftwareUpdateAssetsFunc(ctx, class, assets)
+}
+
+func (s *DataStore) AppleSoftwareUpdateAssetsUpdatedAt(ctx context.Context, class fleet.AppleSoftwareUpdateAssetClass) (*time.Time, error) {
+	s.mu.Lock()
+	s.AppleSoftwareUpdateAssetsUpdatedAtFuncInvoked = true
+	s.mu.Unlock()
+	return s.AppleSoftwareUpdateAssetsUpdatedAtFunc(ctx, class)
+}
+
+func (s *DataStore) UpdatePolicyQueriesByName(ctx context.Context, name string, query string) (updatedIDs []uint, err error) {
+	s.mu.Lock()
+	s.UpdatePolicyQueriesByNameFuncInvoked = true
+	s.mu.Unlock()
+	return s.UpdatePolicyQueriesByNameFunc(ctx, name, query)
 }
 
 func (s *DataStore) NewMDMAppleConfigProfile(ctx context.Context, p fleet.MDMAppleConfigProfile, usesFleetVars []fleet.FleetVarName) (*fleet.MDMAppleConfigProfile, error) {

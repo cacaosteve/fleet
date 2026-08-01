@@ -1446,6 +1446,24 @@ type Datastore interface {
 	IsCVEKnownToFleet(ctx context.Context, cve string) (bool, error)
 
 	///////////////////////////////////////////////////////////////////////////////
+	// Apple software update assets (GDMF cache)
+
+	// ReplaceAppleSoftwareUpdateAssets replaces all cached GDMF assets for the
+	// given class with the provided set (delete missing + upsert). Used by the
+	// apple_software_update_assets cron.
+	ReplaceAppleSoftwareUpdateAssets(ctx context.Context, class AppleSoftwareUpdateAssetClass, assets []AppleSoftwareUpdateAsset) error
+
+	// AppleSoftwareUpdateAssetsUpdatedAt returns the newest updated_at among
+	// cached assets for the class, or nil if none exist.
+	AppleSoftwareUpdateAssetsUpdatedAt(ctx context.Context, class AppleSoftwareUpdateAssetClass) (*time.Time, error)
+
+	// UpdatePolicyQueriesByName sets query for every policy (global or team)
+	// with the given name when the query differs. Returns IDs whose query
+	// changed (caller should ResetPolicy). Used to materialize macOS
+	// OS-currency policies from GDMF.
+	UpdatePolicyQueriesByName(ctx context.Context, name string, query string) (updatedIDs []uint, err error)
+
+	///////////////////////////////////////////////////////////////////////////////
 	// Apple MDM
 
 	// NewMDMAppleConfigProfile creates and returns a new configuration profile.
