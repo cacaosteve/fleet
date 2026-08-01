@@ -992,7 +992,7 @@ type ReplaceAppleSoftwareUpdateAssetsFunc func(ctx context.Context, class fleet.
 
 type AppleSoftwareUpdateAssetsUpdatedAtFunc func(ctx context.Context, class fleet.AppleSoftwareUpdateAssetClass) (*time.Time, error)
 
-type UpdatePolicyQueriesByNameFunc func(ctx context.Context, name string, query string) (updatedIDs []uint, err error)
+type UpdateFleetManagedPolicyQueriesFunc func(ctx context.Context, fleetManagedKey string, query string) (updatedIDs []uint, err error)
 
 type NewMDMAppleConfigProfileFunc func(ctx context.Context, p fleet.MDMAppleConfigProfile, usesFleetVars []fleet.FleetVarName) (*fleet.MDMAppleConfigProfile, error)
 
@@ -3711,8 +3711,8 @@ type DataStore struct {
 	AppleSoftwareUpdateAssetsUpdatedAtFunc        AppleSoftwareUpdateAssetsUpdatedAtFunc
 	AppleSoftwareUpdateAssetsUpdatedAtFuncInvoked bool
 
-	UpdatePolicyQueriesByNameFunc        UpdatePolicyQueriesByNameFunc
-	UpdatePolicyQueriesByNameFuncInvoked bool
+	UpdateFleetManagedPolicyQueriesFunc        UpdateFleetManagedPolicyQueriesFunc
+	UpdateFleetManagedPolicyQueriesFuncInvoked bool
 
 	NewMDMAppleConfigProfileFunc        NewMDMAppleConfigProfileFunc
 	NewMDMAppleConfigProfileFuncInvoked bool
@@ -9001,11 +9001,11 @@ func (s *DataStore) AppleSoftwareUpdateAssetsUpdatedAt(ctx context.Context, clas
 	return s.AppleSoftwareUpdateAssetsUpdatedAtFunc(ctx, class)
 }
 
-func (s *DataStore) UpdatePolicyQueriesByName(ctx context.Context, name string, query string) (updatedIDs []uint, err error) {
+func (s *DataStore) UpdateFleetManagedPolicyQueries(ctx context.Context, fleetManagedKey string, query string) (updatedIDs []uint, err error) {
 	s.mu.Lock()
-	s.UpdatePolicyQueriesByNameFuncInvoked = true
+	s.UpdateFleetManagedPolicyQueriesFuncInvoked = true
 	s.mu.Unlock()
-	return s.UpdatePolicyQueriesByNameFunc(ctx, name, query)
+	return s.UpdateFleetManagedPolicyQueriesFunc(ctx, fleetManagedKey, query)
 }
 
 func (s *DataStore) NewMDMAppleConfigProfile(ctx context.Context, p fleet.MDMAppleConfigProfile, usesFleetVars []fleet.FleetVarName) (*fleet.MDMAppleConfigProfile, error) {

@@ -10,15 +10,19 @@ import (
 	"github.com/fleetdm/fleet/v4/server/fleet"
 )
 
-// Well-known policy names for macOS OS-currency policies that Fleet keeps
-// materialized from Apple's GDMF feed. Matching is by exact policy name
-// (global or team).
+// Well-known Fleet-managed keys and display names for macOS OS-currency
+// policies that Fleet keeps materialized from Apple's GDMF feed.
 const (
-	// PolicyNameUpToDate is the standard-library / Fleet-maintained policy that
-	// requires the latest macOS for each supported major (grace_days = 0).
+	// FleetManagedKeyMacOSUpToDate identifies policies Fleet may rewrite to
+	// require the latest macOS (grace_days = 0).
+	FleetManagedKeyMacOSUpToDate = fleet.FleetManagedKeyMacOSUpToDate
+	// FleetManagedKeyMacOSAcceptable identifies policies Fleet may rewrite to
+	// allow the previous point release for 30 days after a newer release.
+	FleetManagedKeyMacOSAcceptable = fleet.FleetManagedKeyMacOSAcceptable
+
+	// PolicyNameUpToDate is the standard-library name for the up-to-date policy.
 	PolicyNameUpToDate = "Operating system up to date (macOS)"
-	// PolicyNameAcceptable is the standard-library / Fleet-maintained policy that
-	// allows the previous point release for 30 days after a new release.
+	// PolicyNameAcceptable is the standard-library name for the acceptable policy.
 	PolicyNameAcceptable = "Operating system version is acceptable (macOS)"
 
 	// DogfoodPolicyNameUpToDate is the dogfood GitOps alias for PolicyNameUpToDate.
@@ -37,19 +41,25 @@ const (
 
 // MacOSCurrencyPolicy defines a Fleet-maintained macOS OS-currency policy.
 type MacOSCurrencyPolicy struct {
-	Name      string
+	// Key is the persisted policies.fleet_managed_key value.
+	Key       string
 	GraceDays int
 }
 
-// MacOSCurrencyPolicies is the set of policies whose queries are rewritten from
-// GDMF data on each sync.
+// MacOSCurrencyPolicies is the set of Fleet-owned macOS OS-currency policies
+// whose queries are rewritten from GDMF data on each sync. Matching is by
+// fleet_managed_key only — never by user-editable name alone.
 func MacOSCurrencyPolicies() []MacOSCurrencyPolicy {
 	return []MacOSCurrencyPolicy{
-		{Name: PolicyNameUpToDate, GraceDays: GraceDaysUpToDate},
-		{Name: PolicyNameAcceptable, GraceDays: GraceDaysAcceptable},
-		{Name: DogfoodPolicyNameUpToDate, GraceDays: GraceDaysUpToDate},
-		{Name: DogfoodPolicyNameAcceptable, GraceDays: GraceDaysAcceptable},
+		{Key: FleetManagedKeyMacOSUpToDate, GraceDays: GraceDaysUpToDate},
+		{Key: FleetManagedKeyMacOSAcceptable, GraceDays: GraceDaysAcceptable},
 	}
+}
+
+// FleetManagedKeyForPolicyName returns the fleet_managed_key for a well-known
+// Fleet-maintained policy name, or "" if the name is not Fleet-owned.
+func FleetManagedKeyForPolicyName(name string) string {
+	return fleet.FleetManagedKeyForPolicyName(name)
 }
 
 // VersionFloor is the minimum ProductVersion required for one major-version track.

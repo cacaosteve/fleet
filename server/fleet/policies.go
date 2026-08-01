@@ -451,6 +451,10 @@ type PolicyData struct {
 	// Only applies to team policies.
 	ContinuousAutomationsEnabled bool `json:"continuous_automations_enabled" db:"continuous_automations_enabled"`
 
+	// FleetManagedKey marks policies whose query Fleet owns and may rewrite.
+	// Empty/nil means user-owned.
+	FleetManagedKey *string `json:"fleet_managed_key,omitempty" db:"fleet_managed_key"`
+
 	UpdateCreateTimestamps
 }
 
@@ -660,6 +664,12 @@ type PolicySpec struct {
 	Type                   string `json:"type"`
 	FleetMaintainedAppSlug string `json:"fleet_maintained_app_slug"`
 	PatchSoftwareTitleID   uint   `json:"-"`
+
+	// FleetManagedKey marks policies whose query Fleet owns and may rewrite
+	// (for example macOS OS-currency policies driven by Apple's GDMF catalog).
+	// Empty means user-owned. When empty on apply, Fleet may still set it for
+	// well-known Fleet-maintained policy names.
+	FleetManagedKey string `json:"fleet_managed_key,omitempty"`
 }
 
 // PolicySoftwareTitle contains software title data for policies.
@@ -771,4 +781,24 @@ type PolicyMembershipResult struct {
 const (
 	PolicyTypeDynamic = "dynamic"
 	PolicyTypePatch   = "patch"
+
+	// FleetManagedKeyMacOSUpToDate identifies policies Fleet may rewrite to
+	// require the latest macOS (grace_days = 0).
+	FleetManagedKeyMacOSUpToDate = "macos_os_up_to_date"
+	// FleetManagedKeyMacOSAcceptable identifies policies Fleet may rewrite to
+	// allow the previous point release for 30 days after a newer release.
+	FleetManagedKeyMacOSAcceptable = "macos_os_acceptable"
 )
+
+// FleetManagedKeyForPolicyName returns the fleet_managed_key for a well-known
+// Fleet-maintained policy name, or "" if the name is not Fleet-owned.
+func FleetManagedKeyForPolicyName(name string) string {
+	switch name {
+	case "Operating system up to date (macOS)", "macOS - Operating system up to date":
+		return FleetManagedKeyMacOSUpToDate
+	case "Operating system version is acceptable (macOS)", "macOS - Operating system version is acceptable":
+		return FleetManagedKeyMacOSAcceptable
+	default:
+		return ""
+	}
+}

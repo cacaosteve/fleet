@@ -1448,20 +1448,19 @@ type Datastore interface {
 	///////////////////////////////////////////////////////////////////////////////
 	// Apple software update assets (GDMF cache)
 
-	// ReplaceAppleSoftwareUpdateAssets replaces all cached GDMF assets for the
-	// given class with the provided set (delete missing + upsert). Used by the
-	// apple_software_update_assets cron.
+	// ReplaceAppleSoftwareUpdateAssets upserts the provided GDMF assets for the
+	// class (preserving first_seen_at on existing rows) and deletes rows absent
+	// from the new set. Used by the apple_software_update_assets cron.
 	ReplaceAppleSoftwareUpdateAssets(ctx context.Context, class AppleSoftwareUpdateAssetClass, assets []AppleSoftwareUpdateAsset) error
 
 	// AppleSoftwareUpdateAssetsUpdatedAt returns the newest updated_at among
 	// cached assets for the class, or nil if none exist.
 	AppleSoftwareUpdateAssetsUpdatedAt(ctx context.Context, class AppleSoftwareUpdateAssetClass) (*time.Time, error)
 
-	// UpdatePolicyQueriesByName sets query for every policy (global or team)
-	// with the given name when the query differs. Returns IDs whose query
-	// changed (caller should ResetPolicy). Used to materialize macOS
-	// OS-currency policies from GDMF.
-	UpdatePolicyQueriesByName(ctx context.Context, name string, query string) (updatedIDs []uint, err error)
+	// UpdateFleetManagedPolicyQueries sets query for every policy with the given
+	// fleet_managed_key when the query differs, and resets memberships/stats for
+	// those policies in the same transaction.
+	UpdateFleetManagedPolicyQueries(ctx context.Context, fleetManagedKey string, query string) (updatedIDs []uint, err error)
 
 	///////////////////////////////////////////////////////////////////////////////
 	// Apple MDM

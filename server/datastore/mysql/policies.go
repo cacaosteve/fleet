@@ -40,7 +40,7 @@ const policyCols = `
 	p.author_id, p.platforms, p.created_at, p.updated_at, p.critical,
 	p.calendar_events_enabled, p.software_installer_id, p.script_id,
 	p.vpp_apps_teams_id, p.conditional_access_enabled, p.type,
-	p.patch_software_title_id, p.continuous_automations_enabled
+	p.patch_software_title_id, p.continuous_automations_enabled, p.fleet_managed_key
 `
 
 const (
@@ -397,19 +397,21 @@ func (ds *Datastore) SavePolicy(ctx context.Context, p *fleet.Policy, shouldRemo
 	return nil
 }
 
-// UpdatePolicyQueriesByName updates the query for every policy with the given
-// name when it differs. Returns the IDs of policies whose query changed.
-func (ds *Datastore) UpdatePolicyQueriesByName(ctx context.Context, name string, query string) ([]uint, error) {
-	// We must normalize the name for full Unicode support (Unicode equivalence).
-	name = norm.NFC.String(name)
+// UpdateFleetManagedPolicyQueries updates the query for every policy with the
+// given fleet_managed_key when it differs, and resets memberships/stats for
+// those policies in the same transaction.
+func (ds *Datastore) UpdateFleetManagedPolicyQueries(ctx context.Context, fleetManagedKey string, query string) ([]uint, error) {
+	if fleetManagedKey == "" {
+		return nil, ctxerr.New(ctx, "fleet_managed_key is required")
+	}
 
 	var ids []uint
 	err := ds.withRetryTxx(ctx, func(tx sqlx.ExtContext) error {
 		ids = nil
 		if err := sqlx.SelectContext(ctx, tx, &ids, `
-SELECT id FROM policies WHERE name = ? AND query <> ?
-`, name, query); err != nil {
-			return ctxerr.Wrap(ctx, err, "select policies by name for query update")
+SELECT id FROM policies WHERE fleet_managed_key = ? AND query <> ?
+`, fleetManagedKey, query); err != nil {
+			return ctxerr.Wrap(ctx, err, "select Fleet-managed policies for query update")
 		}
 		if len(ids) == 0 {
 			return nil
@@ -420,10 +422,18 @@ SET query = ?, checksum = `+policiesChecksumComputedColumn()+`
 WHERE id IN (?)
 `, query, ids)
 		if err != nil {
-			return ctxerr.Wrap(ctx, err, "build update policy queries by name")
+			return ctxerr.Wrap(ctx, err, "build update Fleet-managed policy queries")
 		}
 		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
-			return ctxerr.Wrap(ctx, err, "update policy queries by name")
+			return ctxerr.Wrap(ctx, err, "update Fleet-managed policy queries")
+		}
+		for _, id := range ids {
+			if err := resetPolicyAutomationAttempts(ctx, tx, id); err != nil {
+				return ctxerr.Wrap(ctx, err, "reset policy automation attempts after GDMF query update")
+			}
+			if err := cleanupPolicy(ctx, tx, tx, id, "", true, true, ds.logger); err != nil {
+				return ctxerr.Wrap(ctx, err, "reset policy memberships after GDMF query update")
+			}
 		}
 		return nil
 	})
@@ -1763,8 +1773,9 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 			checksum,
 			type,
 			patch_software_title_id,
-			continuous_automations_enabled
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, %s, ?, ?, ?)
+			continuous_automations_enabled,
+			fleet_managed_key
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, %s, ?, ?, ?, ?)
 		ON DUPLICATE KEY UPDATE
 			query = VALUES(query),
 			description = VALUES(description),
@@ -1779,7 +1790,8 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 			conditional_access_enabled = VALUES(conditional_access_enabled),
 			type = VALUES(type),
 			patch_software_title_id = VALUES(patch_software_title_id),
-			continuous_automations_enabled = VALUES(continuous_automations_enabled)
+			continuous_automations_enabled = VALUES(continuous_automations_enabled),
+			fleet_managed_key = COALESCE(VALUES(fleet_managed_key), fleet_managed_key)
 		`, policiesChecksumComputedColumn(),
 		)
 		for teamID, teamPolicySpecs := range teamIDToPolicies {
@@ -1803,6 +1815,17 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 
 				if spec.Type == "" {
 					spec.Type = fleet.PolicyTypeDynamic
+				}
+
+				fleetManagedKey := spec.FleetManagedKey
+				// Claim well-known Fleet-maintained macOS currency policy names when
+				// the YAML omits fleet_managed_key (dogfood / standard-library apply).
+				if fleetManagedKey == "" && spec.Platform == "darwin" {
+					fleetManagedKey = fleet.FleetManagedKeyForPolicyName(spec.Name)
+				}
+				var fleetManagedKeyArg *string
+				if fleetManagedKey != "" {
+					fleetManagedKeyArg = &fleetManagedKey
 				}
 
 				// generate new up-to-date patch policy
@@ -1845,7 +1868,7 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 					query,
 					spec.Name, spec.Query, spec.Description, authorID, spec.Resolution, teamID, spec.Platform, spec.Critical,
 					spec.CalendarEventsEnabled, softwareInstallerID, vppAppsTeamsID, scriptID, spec.ConditionalAccessEnabled,
-					spec.Type, patchSoftwareTitleIDArg, spec.ContinuousAutomationsEnabled,
+					spec.Type, patchSoftwareTitleIDArg, spec.ContinuousAutomationsEnabled, fleetManagedKeyArg,
 				)
 				if err != nil {
 					return ctxerr.Wrap(ctx, err, "exec ApplyPolicySpecs insert")

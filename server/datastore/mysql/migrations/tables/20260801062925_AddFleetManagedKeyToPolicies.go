@@ -1,0 +1,67 @@
+package tables
+
+import (
+	"database/sql"
+	"fmt"
+)
+
+func init() {
+	MigrationClient.AddMigration(Up_20260801062925, Down_20260801062925)
+}
+
+func Up_20260801062925(tx *sql.Tx) error {
+	// fleet_managed_key marks policies whose query Fleet owns and may rewrite
+	// (e.g. macOS OS-currency policies driven by Apple's GDMF catalog).
+	// NULL means user-owned. Uniqueness is per team scope, including global
+	// (team_id IS NULL): a plain UNIQUE(team_id, key) would not enforce that
+	// because MySQL treats NULLs as distinct in unique indexes.
+	_, err := tx.Exec(`
+ALTER TABLE policies
+  ADD COLUMN fleet_managed_key VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  ADD COLUMN fleet_managed_team_key VARCHAR(96) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+    GENERATED ALWAYS AS (
+      IF(fleet_managed_key IS NULL, NULL,
+         CONCAT_WS(':', IF(team_id IS NULL, 'global', CONVERT(team_id, CHAR)), fleet_managed_key))
+    ) STORED,
+  ADD UNIQUE KEY idx_policies_fleet_managed_team_key (fleet_managed_team_key)
+`)
+	if err != nil {
+		return fmt.Errorf("adding policies.fleet_managed_key: %w", err)
+	}
+
+	// One-time claim of existing Fleet-maintained macOS OS-currency policies by
+	// exact name + darwin platform so the hourly GDMF cron can update them by key.
+	_, err = tx.Exec(`
+UPDATE policies
+SET fleet_managed_key = 'macos_os_up_to_date'
+WHERE fleet_managed_key IS NULL
+  AND platforms = 'darwin'
+  AND name IN (
+    'Operating system up to date (macOS)',
+    'macOS - Operating system up to date'
+  )
+`)
+	if err != nil {
+		return fmt.Errorf("backfilling macos_os_up_to_date keys: %w", err)
+	}
+
+	_, err = tx.Exec(`
+UPDATE policies
+SET fleet_managed_key = 'macos_os_acceptable'
+WHERE fleet_managed_key IS NULL
+  AND platforms = 'darwin'
+  AND name IN (
+    'Operating system version is acceptable (macOS)',
+    'macOS - Operating system version is acceptable'
+  )
+`)
+	if err != nil {
+		return fmt.Errorf("backfilling macos_os_acceptable keys: %w", err)
+	}
+
+	return nil
+}
+
+func Down_20260801062925(tx *sql.Tx) error {
+	return nil
+}

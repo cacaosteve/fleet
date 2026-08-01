@@ -38,17 +38,9 @@ func TestSyncMacOSCurrencyPolicies(t *testing.T) {
 	}
 
 	updated := map[string]string{}
-	var resetIDs []uint
-	nextID := uint(1)
-	ds.UpdatePolicyQueriesByNameFunc = func(ctx context.Context, name string, query string) ([]uint, error) {
-		updated[name] = query
-		id := nextID
-		nextID++
-		return []uint{id}, nil
-	}
-	ds.ResetPolicyFunc = func(ctx context.Context, policyID uint) error {
-		resetIDs = append(resetIDs, policyID)
-		return nil
+	ds.UpdateFleetManagedPolicyQueriesFunc = func(ctx context.Context, key string, query string) ([]uint, error) {
+		updated[key] = query
+		return []uint{1}, nil
 	}
 
 	err := SyncMacOSCurrencyPolicies(context.Background(), ds, slog.Default(), now)
@@ -58,13 +50,35 @@ func TestSyncMacOSCurrencyPolicies(t *testing.T) {
 
 	require.Equal(t,
 		"SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.4.1') >= 0) OR (major = 15 AND version_compare(version, '15.7.5') >= 0);",
-		updated[PolicyNameUpToDate],
+		updated[FleetManagedKeyMacOSUpToDate],
 	)
 	require.Equal(t,
 		"SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.4.0') >= 0) OR (major = 15 AND version_compare(version, '15.7.4') >= 0);",
-		updated[PolicyNameAcceptable],
+		updated[FleetManagedKeyMacOSAcceptable],
 	)
-	require.Equal(t, updated[PolicyNameUpToDate], updated[DogfoodPolicyNameUpToDate])
-	require.Equal(t, updated[PolicyNameAcceptable], updated[DogfoodPolicyNameAcceptable])
-	require.Len(t, resetIDs, 4)
+	require.Len(t, updated, 2)
+}
+
+func TestSyncMacOSCurrencyPoliciesPreservesCacheOnEmptyFeed(t *testing.T) {
+	ds := new(mock.Store)
+	now := time.Date(2026, 7, 31, 12, 0, 0, 0, time.UTC)
+
+	orig := getAssetMetadataFn
+	t.Cleanup(func() { getAssetMetadataFn = orig })
+	getAssetMetadataFn = func() (*AssetMetadata, error) {
+		return &AssetMetadata{}, nil
+	}
+
+	ds.ReplaceAppleSoftwareUpdateAssetsFunc = func(ctx context.Context, class fleet.AppleSoftwareUpdateAssetClass, assets []fleet.AppleSoftwareUpdateAsset) error {
+		t.Fatal("must not replace cache on empty feed")
+		return nil
+	}
+	ds.UpdateFleetManagedPolicyQueriesFunc = func(ctx context.Context, key string, query string) ([]uint, error) {
+		t.Fatal("must not update policies on empty feed")
+		return nil, nil
+	}
+
+	err := SyncMacOSCurrencyPolicies(context.Background(), ds, slog.Default(), now)
+	require.NoError(t, err)
+	require.False(t, ds.ReplaceAppleSoftwareUpdateAssetsFuncInvoked)
 }

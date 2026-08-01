@@ -138,11 +138,13 @@ write_dogfood_policy() {
     local name="$2"
     local query="$3"
     local critical="$4"
-    local description="$5"
+    local fleet_managed_key="$5"
+    local description="$6"
     cat > "$path" <<EOF
 - name: ${name}
   query: ${query}
   critical: ${critical}
+  fleet_managed_key: ${fleet_managed_key}
   description: ${description}
   resolution: Please find time to run Software Update.  > System Settings > Software Update
   platform: darwin
@@ -156,12 +158,14 @@ write_dogfood_policy "$DOGFOOD_UP_TO_DATE" \
     "macOS - Operating system up to date" \
     "$UP_TO_DATE_QUERY" \
     "true" \
+    "macos_os_up_to_date" \
     "Using an outdated macOS version risks exposure to security vulnerabilities and potential system instability. Fleet keeps these version floors current from Apple's GDMF catalog (grace_days = 0)."
 
 write_dogfood_policy "$DOGFOOD_ACCEPTABLE" \
     "macOS - Operating system version is acceptable" \
     "$ACCEPTABLE_QUERY" \
     "false" \
+    "macos_os_acceptable" \
     "Hosts may trail the latest macOS point release for up to 30 days after Apple publishes it. Fleet keeps these version floors current from Apple's GDMF catalog (grace_days = 30)."
 
 # Update standard-query-library in place (name-keyed).
@@ -170,6 +174,7 @@ if [ -f "$STANDARD_LIBRARY" ]; then
 import re, sys
 path, up_q, acc_q = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(path, encoding="utf-8").read()
+failed = []
 
 def replace_policy_query(text, name, query):
     pattern = re.compile(
@@ -178,12 +183,15 @@ def replace_policy_query(text, name, query):
     )
     new_text, n = pattern.subn(rf"\g<1>{query}", text, count=1)
     if n != 1:
-        print(f"Warning: could not update query for {name!r} in {path}", file=sys.stderr)
+        failed.append(name)
         return text
     return new_text
 
 text = replace_policy_query(text, "Operating system up to date (macOS)", up_q)
 text = replace_policy_query(text, "Operating system version is acceptable (macOS)", acc_q)
+if failed:
+    print(f"Error: could not update query for {failed!r} in {path}", file=sys.stderr)
+    sys.exit(1)
 open(path, "w", encoding="utf-8").write(text)
 print(f"Updated {path}")
 PY

@@ -123,11 +123,19 @@ func TestMacOSAssetsForCurrencyPolicies(t *testing.T) {
 
 func TestMacOSCurrencyPolicies(t *testing.T) {
 	policies := MacOSCurrencyPolicies()
-	require.Len(t, policies, 4)
+	require.Len(t, policies, 2)
+	require.Equal(t, FleetManagedKeyMacOSUpToDate, policies[0].Key)
 	require.Equal(t, GraceDaysUpToDate, policies[0].GraceDays)
+	require.Equal(t, FleetManagedKeyMacOSAcceptable, policies[1].Key)
 	require.Equal(t, GraceDaysAcceptable, policies[1].GraceDays)
-	require.Equal(t, GraceDaysUpToDate, policies[2].GraceDays)
-	require.Equal(t, GraceDaysAcceptable, policies[3].GraceDays)
+}
+
+func TestFleetManagedKeyForPolicyName(t *testing.T) {
+	require.Equal(t, FleetManagedKeyMacOSUpToDate, FleetManagedKeyForPolicyName(PolicyNameUpToDate))
+	require.Equal(t, FleetManagedKeyMacOSUpToDate, FleetManagedKeyForPolicyName(DogfoodPolicyNameUpToDate))
+	require.Equal(t, FleetManagedKeyMacOSAcceptable, FleetManagedKeyForPolicyName(PolicyNameAcceptable))
+	require.Equal(t, FleetManagedKeyMacOSAcceptable, FleetManagedKeyForPolicyName(DogfoodPolicyNameAcceptable))
+	require.Empty(t, FleetManagedKeyForPolicyName("custom policy"))
 }
 
 func TestPolicyQueryRejectsUnsafeVersions(t *testing.T) {
