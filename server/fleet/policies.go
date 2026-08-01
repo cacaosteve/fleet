@@ -667,8 +667,8 @@ type PolicySpec struct {
 
 	// FleetManagedKey marks policies whose query Fleet owns and may rewrite
 	// (for example macOS OS-currency policies driven by Apple's GDMF catalog).
-	// Empty means user-owned. When empty on apply, Fleet may still set it for
-	// well-known Fleet-maintained policy names.
+	// Empty means user-owned. Ownership is never inferred from the policy name;
+	// GitOps/API must set this field explicitly.
 	FleetManagedKey string `json:"fleet_managed_key,omitempty"`
 }
 
@@ -789,16 +789,3 @@ const (
 	// allow the previous point release for 30 days after a newer release.
 	FleetManagedKeyMacOSAcceptable = "macos_os_acceptable"
 )
-
-// FleetManagedKeyForPolicyName returns the fleet_managed_key for a well-known
-// Fleet-maintained policy name, or "" if the name is not Fleet-owned.
-func FleetManagedKeyForPolicyName(name string) string {
-	switch name {
-	case "Operating system up to date (macOS)", "macOS - Operating system up to date":
-		return FleetManagedKeyMacOSUpToDate
-	case "Operating system version is acceptable (macOS)", "macOS - Operating system version is acceptable":
-		return FleetManagedKeyMacOSAcceptable
-	default:
-		return ""
-	}
-}

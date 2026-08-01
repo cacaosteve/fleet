@@ -1817,15 +1817,11 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 					spec.Type = fleet.PolicyTypeDynamic
 				}
 
-				fleetManagedKey := spec.FleetManagedKey
-				// Claim well-known Fleet-maintained macOS currency policy names when
-				// the YAML omits fleet_managed_key (dogfood / standard-library apply).
-				if fleetManagedKey == "" && spec.Platform == "darwin" {
-					fleetManagedKey = fleet.FleetManagedKeyForPolicyName(spec.Name)
-				}
+				// Ownership is opt-in via explicit fleet_managed_key only — never
+				// inferred from the user-editable policy name.
 				var fleetManagedKeyArg *string
-				if fleetManagedKey != "" {
-					fleetManagedKeyArg = &fleetManagedKey
+				if spec.FleetManagedKey != "" {
+					fleetManagedKeyArg = &spec.FleetManagedKey
 				}
 
 				// generate new up-to-date patch policy

@@ -130,14 +130,6 @@ func TestMacOSCurrencyPolicies(t *testing.T) {
 	require.Equal(t, GraceDaysAcceptable, policies[1].GraceDays)
 }
 
-func TestFleetManagedKeyForPolicyName(t *testing.T) {
-	require.Equal(t, FleetManagedKeyMacOSUpToDate, FleetManagedKeyForPolicyName(PolicyNameUpToDate))
-	require.Equal(t, FleetManagedKeyMacOSUpToDate, FleetManagedKeyForPolicyName(DogfoodPolicyNameUpToDate))
-	require.Equal(t, FleetManagedKeyMacOSAcceptable, FleetManagedKeyForPolicyName(PolicyNameAcceptable))
-	require.Equal(t, FleetManagedKeyMacOSAcceptable, FleetManagedKeyForPolicyName(DogfoodPolicyNameAcceptable))
-	require.Empty(t, FleetManagedKeyForPolicyName("custom policy"))
-}
-
 func TestPolicyQueryRejectsUnsafeVersions(t *testing.T) {
 	require.Empty(t, PolicyQuery([]VersionFloor{{Major: 15, Version: "15.7.5' OR '1'='1"}}))
 	require.Equal(t,

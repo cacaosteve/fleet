@@ -11,34 +11,30 @@ func TestUp_20260801062925(t *testing.T) {
 
 	teamID := execNoErrLastID(t, db, `INSERT INTO teams (name) VALUES ('ManagedKeyTest')`)
 
-	globalUpToDate := execNoErrLastID(t, db, `
+	// Pre-existing policies with Fleet-maintained display names stay user-owned
+	// until GitOps/API sets fleet_managed_key explicitly.
+	globalNamed := execNoErrLastID(t, db, `
 		INSERT INTO policies (name, query, description, platforms, checksum)
 		VALUES ('Operating system up to date (macOS)', 'SELECT 1', '', 'darwin', UNHEX(MD5(CONCAT_WS(CHAR(0), '', 'Operating system up to date (macOS)'))))`)
-	windowsSameName := execNoErrLastID(t, db, `
+	dogfoodAlias := execNoErrLastID(t, db, `
 		INSERT INTO policies (name, query, description, platforms, team_id, checksum)
-		VALUES ('Operating system up to date (macOS)', 'SELECT 1', '', 'windows', ?, UNHEX(MD5(CONCAT_WS(CHAR(0), ?, 'Operating system up to date (macOS)'))))`, teamID, teamID)
-	dogfoodAcceptable := execNoErrLastID(t, db, `
-		INSERT INTO policies (name, query, description, platforms, checksum)
-		VALUES ('macOS - Operating system version is acceptable', 'SELECT 1', '', 'darwin', UNHEX(MD5(CONCAT_WS(CHAR(0), '', 'macOS - Operating system version is acceptable'))))`)
+		VALUES ('macOS - Operating system up to date', 'SELECT 1', '', 'darwin', ?, UNHEX(MD5(CONCAT_WS(CHAR(0), ?, 'macOS - Operating system up to date'))))`, teamID, teamID)
 
 	applyNext(t, db)
 
 	var key *string
-	err := db.QueryRow(`SELECT fleet_managed_key FROM policies WHERE id = ?`, globalUpToDate).Scan(&key)
+	err := db.QueryRow(`SELECT fleet_managed_key FROM policies WHERE id = ?`, globalNamed).Scan(&key)
 	require.NoError(t, err)
-	require.NotNil(t, key)
-	require.Equal(t, "macos_os_up_to_date", *key)
+	require.Nil(t, key, "migration must not claim policies by name")
 
-	err = db.QueryRow(`SELECT fleet_managed_key FROM policies WHERE id = ?`, windowsSameName).Scan(&key)
+	err = db.QueryRow(`SELECT fleet_managed_key FROM policies WHERE id = ?`, dogfoodAlias).Scan(&key)
 	require.NoError(t, err)
-	require.Nil(t, key, "non-darwin policy with same name must not be claimed")
+	require.Nil(t, key, "migration must not claim policies by name")
 
-	err = db.QueryRow(`SELECT fleet_managed_key FROM policies WHERE id = ?`, dogfoodAcceptable).Scan(&key)
-	require.NoError(t, err)
-	require.NotNil(t, key)
-	require.Equal(t, "macos_os_acceptable", *key)
+	// Explicit key works; unique fleet_managed_team_key rejects a second global claim.
+	execNoErr(t, db, `
+		UPDATE policies SET fleet_managed_key = 'macos_os_up_to_date' WHERE id = ?`, globalNamed)
 
-	// Unique fleet_managed_team_key rejects a second global claim (team_id NULL).
 	_, err = db.Exec(`
 		INSERT INTO policies (name, query, description, platforms, fleet_managed_key, checksum)
 		VALUES ('other', 'SELECT 1', '', 'darwin', 'macos_os_up_to_date', UNHEX(MD5(CONCAT_WS(CHAR(0), '', 'other'))))`)
