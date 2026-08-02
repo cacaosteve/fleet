@@ -146,7 +146,7 @@ var (
 	errPolicyConditionalAccessEnabledInvalidPlatform = errors.New("\"conditional_access_enabled\" is only valid on \"darwin\" and \"windows\" policies")
 	errPolicyFMASlugRequiresPatch                    = errors.New("\"fleet_maintained_app_slug\" is only supported for patch policies")
 	errPolicyInvalidFleetManagedKey                  = errors.New("invalid \"fleet_managed_key\"")
-	errPolicyFleetManagedKeyPlatform                 = errors.New("\"fleet_managed_key\" requires platform \"darwin\"")
+	errPolicyFleetManagedKeyPlatform                 = errors.New("\"fleet_managed_key\" does not match policy platform")
 	errPolicyFleetManagedKeyType                     = errors.New("\"fleet_managed_key\" is only supported for dynamic policies")
 )
 
@@ -733,24 +733,36 @@ func (p PolicySpec) Verify() error {
 }
 
 // verifyFleetManagedKey ensures ownership keys are known and only applied to
-// dynamic darwin policies (the only ones the GDMF cron rewrites today).
+// dynamic policies whose platform matches the key (darwin for macOS currency
+// keys, windows for Windows currency keys).
 func verifyFleetManagedKey(key, platform, typ string) error {
 	if key == "" {
 		return nil
 	}
-	switch key {
-	case FleetManagedKeyMacOSUpToDate, FleetManagedKeyMacOSAcceptable:
-		// OK
-	default:
+	requiredPlatform, ok := FleetManagedKeyPlatform(key)
+	if !ok {
 		return errPolicyInvalidFleetManagedKey
 	}
 	if typ != "" && typ != PolicyTypeDynamic {
 		return errPolicyFleetManagedKeyType
 	}
-	if platform != "darwin" {
+	if platform != requiredPlatform {
 		return errPolicyFleetManagedKeyPlatform
 	}
 	return nil
+}
+
+// FleetManagedKeyPlatform returns the required policy platform for a known
+// fleet_managed_key, or ("", false) when the key is unknown.
+func FleetManagedKeyPlatform(key string) (string, bool) {
+	switch key {
+	case FleetManagedKeyMacOSUpToDate, FleetManagedKeyMacOSAcceptable:
+		return "darwin", true
+	case FleetManagedKeyWindowsUpToDate, FleetManagedKeyWindowsAcceptable:
+		return "windows", true
+	default:
+		return "", false
+	}
 }
 
 // VerifyLabelScopes checks that the spec's label scopes are valid: at most one
@@ -836,4 +848,10 @@ const (
 	// FleetManagedKeyMacOSAcceptable identifies policies Fleet may rewrite to
 	// allow the previous point release for 30 days after a newer release.
 	FleetManagedKeyMacOSAcceptable = "macos_os_acceptable"
+	// FleetManagedKeyWindowsUpToDate identifies policies Fleet may rewrite to
+	// require the latest Windows build per product-version track (grace_days = 0).
+	FleetManagedKeyWindowsUpToDate = "windows_os_up_to_date"
+	// FleetManagedKeyWindowsAcceptable identifies policies Fleet may rewrite to
+	// allow the previous FixedBuild for 30 days after a newer build appears in MSRC.
+	FleetManagedKeyWindowsAcceptable = "windows_os_acceptable"
 )

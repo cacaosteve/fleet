@@ -98,21 +98,24 @@ Policies support `path:` (single file) and `paths:` (glob pattern) references. S
 
 For available options, see the parameters for the [Create policy](https://fleetdm.com/docs/rest-api/rest-api#create-policy) and [Create team policy](https://fleetdm.com/docs/rest-api/rest-api#create-team-policy) API endpoints.
 
-#### Fleet-managed macOS OS-currency policies
+#### Fleet-managed OS-currency policies
 
-Set `fleet_managed_key` so Fleet owns the policy query and refreshes version floors hourly from Apple's software update catalog (GDMF).
+Set `fleet_managed_key` so Fleet owns the policy query and refreshes version floors hourly.
 
 Supported values:
 
-- `macos_os_up_to_date` — require the latest macOS for each of the two newest major tracks (`grace_days = 0`).
-- `macos_os_acceptable` — allow the previous point release for up to 30 days after Apple publishes a newer release.
+- `macos_os_up_to_date` — require the latest macOS for each of the two newest major tracks (`grace_days = 0`). Floors come from Apple's software update catalog (GDMF). Requires `platform: darwin`.
+- `macos_os_acceptable` — allow the previous macOS point release for up to 30 days after Apple publishes a newer release. Requires `platform: darwin`.
+- `windows_os_up_to_date` — require the latest MSRC FixedBuild for each of the newest Windows 10/11 product-version tracks (`grace_days = 0`). Floors come from local MSRC bulletins Fleet already syncs for Windows OS vulnerability matching (a patched-build proxy, not Microsoft Release Health). Requires `platform: windows`.
+- `windows_os_acceptable` — allow the previous FixedBuild for up to 30 days after a newer build appears in MSRC. Requires `platform: windows`.
 
 Requirements:
 
-- `platform` must be `darwin`.
+- `platform` must match the key (`darwin` for macOS keys, `windows` for Windows keys).
 - `type` must be dynamic (omit `type`, or set `type: dynamic`).
 - At most one policy per fleet (including global / unassigned) may use each key.
 - Omit `fleet_managed_key` (or leave it empty) to make the policy user-owned again. Fleet will stop rewriting its query.
+- Windows currency policies need a configured vulnerabilities databases path so MSRC bulletins are available on disk.
 
 Example:
 
@@ -130,6 +133,18 @@ policies:
     query: "SELECT 1 FROM os_version WHERE major = 26;"
     description: Checks that the Mac is on an acceptable macOS version (30-day grace).
     resolution: Open System Settings > General > Software Update.
+  - name: Operating system up to date (Windows)
+    fleet_managed_key: windows_os_up_to_date
+    platform: windows
+    query: "SELECT 1 FROM os_version WHERE version LIKE '10.0.%';" # Fleet overwrites this from MSRC
+    description: Checks that Windows is on the latest patched build for its product-version track.
+    resolution: Install the latest Windows quality updates.
+  - name: Operating system version is acceptable (Windows)
+    fleet_managed_key: windows_os_acceptable
+    platform: windows
+    query: "SELECT 1 FROM os_version WHERE version LIKE '10.0.%';"
+    description: Checks that Windows is on an acceptable patched build (30-day grace).
+    resolution: Install the latest Windows quality updates.
 ```
 
 #### Patch policy

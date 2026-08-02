@@ -1,0 +1,1 @@
+- Added Fleet-managed Windows OS-currency policies (`windows_os_up_to_date`, `windows_os_acceptable`) that Fleet rewrites hourly from local MSRC FixedBuilds.

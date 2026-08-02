@@ -1285,6 +1285,30 @@ spec:
 apiVersion: v1
 kind: policy
 spec:
+  name: Operating system up to date (Windows)
+  fleet_managed_key: windows_os_up_to_date
+  query: SELECT 1 FROM os_version WHERE (version LIKE '10.0.22631.%' AND version_compare(version, '10.0.22631.3007') >= 0) OR (version LIKE '10.0.22621.%' AND version_compare(version, '10.0.22621.3007') >= 0) OR (version LIKE '10.0.22000.%' AND version_compare(version, '10.0.22000.2713') >= 0) OR (version LIKE '10.0.19045.%' AND version_compare(version, '10.0.19045.3930') >= 0);
+  description: "Checks that the Windows host is on the latest patched build for its product-version track (for example 10.0.22631.x). Fleet keeps this policy's version floors up to date from MSRC FixedBuilds already synced for Windows OS vulnerability matching. This is a patched-build proxy, not Microsoft Release Health."
+  resolution: "Install the latest Windows quality updates from Settings > Windows Update, then restart if prompted."
+  tags: compliance, critical, fleet-maintained, msrc
+  platform: windows
+  contributors: cacaosteve
+---
+apiVersion: v1
+kind: policy
+spec:
+  name: Operating system version is acceptable (Windows)
+  fleet_managed_key: windows_os_acceptable
+  query: SELECT 1 FROM os_version WHERE (version LIKE '10.0.22631.%' AND version_compare(version, '10.0.22631.2861') >= 0) OR (version LIKE '10.0.22621.%' AND version_compare(version, '10.0.22621.2861') >= 0) OR (version LIKE '10.0.22000.%' AND version_compare(version, '10.0.22000.2538') >= 0) OR (version LIKE '10.0.19045.%' AND version_compare(version, '10.0.19045.3803') >= 0);
+  description: "Checks that the Windows host is on an acceptable patched build: the latest FixedBuild for its product-version track, or the previous FixedBuild while a newer build is less than 30 days old in MSRC. Fleet keeps this policy's version floors up to date from local MSRC bulletins."
+  resolution: "Install the latest Windows quality updates from Settings > Windows Update, then restart if prompted."
+  tags: compliance, critical, fleet-maintained, msrc
+  platform: windows
+  contributors: cacaosteve
+---
+apiVersion: v1
+kind: policy
+spec:
   name: Automatic updates enabled (macOS)
   query: SELECT 1 FROM managed_policies WHERE domain='com.apple.SoftwareUpdate' AND name='AutomaticCheckEnabled' AND value=1 LIMIT 1;
   description: "Checks that a mobile device management (MDM) solution configures the Mac to automatically check for updates."

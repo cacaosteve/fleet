@@ -287,6 +287,10 @@ func registerMDMCrons(ctx context.Context, deps cronSchedulesDeps) {
 	deps.register("failed to register apple_software_update_assets schedule", func() (fleet.CronSchedule, error) {
 		return newAppleSoftwareUpdateAssetsSchedule(ctx, deps.instanceID, deps.ds, deps.logger)
 	})
+
+	deps.register("failed to register windows_os_currency_policies schedule", func() (fleet.CronSchedule, error) {
+		return newWindowsOSCurrencyPoliciesSchedule(ctx, deps.instanceID, deps.ds, deps.logger, &deps.config.Vulnerabilities)
+	})
 }
 
 // registerPremiumCrons covers the Fleet Premium schedules: iPhone/iPad

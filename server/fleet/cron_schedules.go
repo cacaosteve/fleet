@@ -75,6 +75,9 @@ const (
 	// catalog into apple_software_update_assets and rewrites Fleet-maintained
 	// macOS OS-currency policy queries (up to date / acceptable). Runs hourly.
 	CronAppleSoftwareUpdateAssets CronScheduleName = "apple_software_update_assets"
+	// CronWindowsOSCurrencyPolicies rewrites Fleet-maintained Windows OS-currency
+	// policy queries from local MSRC FixedBuilds. Runs hourly.
+	CronWindowsOSCurrencyPolicies CronScheduleName = "windows_os_currency_policies"
 )
 
 type CronSchedulesService interface {

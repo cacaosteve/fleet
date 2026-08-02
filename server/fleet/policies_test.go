@@ -139,10 +139,25 @@ func TestPolicySpecVerifyFleetMaintainedAppSlug(t *testing.T) {
 			wantErr: errPolicyInvalidFleetManagedKey,
 		},
 		{
-			name: "fleet_managed_key on windows is rejected",
+			name: "macOS fleet_managed_key on windows is rejected",
 			spec: PolicySpec{
 				Name: "macOS up to date", Query: "SELECT 1;", Type: PolicyTypeDynamic,
 				Platform: "windows", FleetManagedKey: FleetManagedKeyMacOSUpToDate,
+			},
+			wantErr: errPolicyFleetManagedKeyPlatform,
+		},
+		{
+			name: "windows dynamic with known fleet_managed_key is allowed",
+			spec: PolicySpec{
+				Name: "Windows up to date", Query: "SELECT 1;", Type: PolicyTypeDynamic,
+				Platform: "windows", FleetManagedKey: FleetManagedKeyWindowsUpToDate,
+			},
+		},
+		{
+			name: "windows fleet_managed_key on darwin is rejected",
+			spec: PolicySpec{
+				Name: "Windows up to date", Query: "SELECT 1;", Type: PolicyTypeDynamic,
+				Platform: "darwin", FleetManagedKey: FleetManagedKeyWindowsUpToDate,
 			},
 			wantErr: errPolicyFleetManagedKeyPlatform,
 		},

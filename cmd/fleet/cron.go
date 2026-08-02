@@ -43,6 +43,7 @@ import (
 	"github.com/fleetdm/fleet/v4/server/vulnerabilities/goval_dictionary"
 	"github.com/fleetdm/fleet/v4/server/vulnerabilities/macoffice"
 	"github.com/fleetdm/fleet/v4/server/vulnerabilities/msrc"
+	msrccurrency "github.com/fleetdm/fleet/v4/server/vulnerabilities/msrc/currency"
 	"github.com/fleetdm/fleet/v4/server/vulnerabilities/nvd"
 	"github.com/fleetdm/fleet/v4/server/vulnerabilities/osv"
 	"github.com/fleetdm/fleet/v4/server/vulnerabilities/oval"
@@ -2683,6 +2684,39 @@ func newAppleSoftwareUpdateAssetsSchedule(
 		schedule.WithLogger(logger),
 		schedule.WithJob("sync_macos_currency_policies", func(ctx context.Context) error {
 			return gdmf.SyncMacOSCurrencyPolicies(ctx, ds, logger, time.Now().UTC())
+		}),
+	)
+	return s, nil
+}
+
+// newWindowsOSCurrencyPoliciesSchedule rewrites Fleet-maintained Windows
+// OS-currency policy queries from local MSRC FixedBuilds.
+func newWindowsOSCurrencyPoliciesSchedule(
+	ctx context.Context,
+	instanceID string,
+	ds fleet.Datastore,
+	logger *slog.Logger,
+	vulnConfig *config.VulnerabilitiesConfig,
+) (*schedule.Schedule, error) {
+	const (
+		name            = string(fleet.CronWindowsOSCurrencyPolicies)
+		defaultInterval = 1 * time.Hour
+	)
+	logger = logger.With("cron", name)
+	s := schedule.New(
+		ctx, name, instanceID, defaultInterval, ds, ds,
+		schedule.WithLogger(logger),
+		schedule.WithJob("sync_windows_currency_policies", func(ctx context.Context) error {
+			appConfig, err := ds.AppConfig(ctx)
+			if err != nil {
+				return ctxerr.Wrap(ctx, err, "read app config for Windows currency policies")
+			}
+			var cfg config.VulnerabilitiesConfig
+			if vulnConfig != nil {
+				cfg = *vulnConfig
+			}
+			vulnPath := configureVulnPath(ctx, cfg, appConfig, logger)
+			return msrccurrency.SyncWindowsCurrencyPolicies(ctx, ds, logger, vulnPath, time.Now().UTC())
 		}),
 	)
 	return s, nil

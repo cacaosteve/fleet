@@ -9136,6 +9136,36 @@ func testUpdateFleetManagedPolicyQueries(t *testing.T, ds *Datastore) {
 	require.NoError(t, err)
 	require.Equal(t, "SELECT 'custom';", stillCustom.Query)
 	require.Nil(t, stillCustom.FleetManagedKey)
+
+	// Windows managed keys use the same rewrite path.
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:            "Operating system up to date (Windows)",
+			Query:           "SELECT 0;",
+			Platform:        "windows",
+			FleetManagedKey: fleet.FleetManagedKeyWindowsUpToDate,
+		},
+	}))
+	winPolicies, err := ds.ListGlobalPolicies(ctx, fleet.ListOptions{}, "")
+	require.NoError(t, err)
+	var winPolicy *fleet.Policy
+	for _, p := range winPolicies {
+		if p.Name == "Operating system up to date (Windows)" {
+			winPolicy = p
+			break
+		}
+	}
+	require.NotNil(t, winPolicy)
+	require.NotNil(t, winPolicy.FleetManagedKey)
+	require.Equal(t, fleet.FleetManagedKeyWindowsUpToDate, *winPolicy.FleetManagedKey)
+
+	winQuery := "SELECT 1 FROM os_version WHERE version LIKE '10.0.22631.%';"
+	ids, err = ds.UpdateFleetManagedPolicyQueries(ctx, fleet.FleetManagedKeyWindowsUpToDate, winQuery)
+	require.NoError(t, err)
+	require.Equal(t, []uint{winPolicy.ID}, ids)
+	updatedWin, err := ds.Policy(ctx, winPolicy.ID)
+	require.NoError(t, err)
+	require.Equal(t, winQuery, updatedWin.Query)
 }
 
 func testApplyPolicySpecsFleetManagedKeyUnclaim(t *testing.T, ds *Datastore) {
