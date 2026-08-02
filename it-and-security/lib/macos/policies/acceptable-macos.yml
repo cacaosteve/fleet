@@ -1,8 +1,0 @@
-- name: macOS - Operating system version is acceptable
-  query: SELECT 1 FROM os_version WHERE (major = 26 AND version_compare(version, '26.5.2') >= 0) OR (major = 15 AND version_compare(version, '15.7.7') >= 0);
-  critical: false
-  fleet_managed_key: macos_os_acceptable
-  description: Hosts may trail the latest macOS point release for up to 30 days after Apple publishes it. Fleet keeps these version floors current from Apple's GDMF catalog (grace_days = 30).
-  resolution: Please find time to run Software Update.  > System Settings > Software Update
-  platform: darwin
-  calendar_events_enabled: false
