@@ -468,7 +468,7 @@ func TestApplyPolicySpecsReturnsErrorOnDuplicateFleetManagedKey(t *testing.T) {
 	}
 
 	svc, ctx := newTestService(t, ds, nil, nil)
-	user := &fleet.User{GlobalRole: ptr.String(fleet.RoleAdmin)}
+	user := &fleet.User{GlobalRole: new(fleet.RoleAdmin)}
 	ctx = viewer.NewContext(ctx, viewer.Viewer{User: user})
 
 	err := svc.ApplyPolicySpecs(ctx, []*fleet.PolicySpec{
