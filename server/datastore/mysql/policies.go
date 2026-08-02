@@ -1622,6 +1622,55 @@ func (ds *Datastore) TeamPolicy(ctx context.Context, teamID uint, policyID uint)
 	return policyDB(ctx, ds.reader(ctx), policyID, &teamID)
 }
 
+func fleetManagedKeyConflictError(key string) error {
+	return &fleet.ConflictError{
+		Message: fmt.Sprintf(
+			"Couldn't apply. Another policy already uses fleet_managed_key %q in this fleet.",
+			key,
+		),
+	}
+}
+
+// rejectFleetManagedKeyOwnerConflicts returns ConflictError when a spec claims a
+// fleet_managed_key already owned by a differently named policy in the same team
+// scope. Call after any same-apply releases so key transfers can succeed.
+func rejectFleetManagedKeyOwnerConflicts(
+	ctx context.Context,
+	tx sqlx.ExtContext,
+	teamIDToPolicies map[*uint][]*fleet.PolicySpec,
+) error {
+	for teamID, teamPolicySpecs := range teamIDToPolicies {
+		for _, spec := range teamPolicySpecs {
+			if spec.FleetManagedKey == "" {
+				continue
+			}
+			var ownerName string
+			var err error
+			if teamID == nil {
+				err = sqlx.GetContext(ctx, tx, &ownerName, `
+					SELECT name FROM policies
+					WHERE team_id IS NULL AND fleet_managed_key = ?
+					FOR UPDATE`, spec.FleetManagedKey)
+			} else {
+				err = sqlx.GetContext(ctx, tx, &ownerName, `
+					SELECT name FROM policies
+					WHERE team_id = ? AND fleet_managed_key = ?
+					FOR UPDATE`, *teamID, spec.FleetManagedKey)
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return ctxerr.Wrap(ctx, err, "check fleet_managed_key owner")
+			}
+			if ownerName != spec.Name {
+				return fleetManagedKeyConflictError(spec.FleetManagedKey)
+			}
+		}
+	}
+	return nil
+}
+
 // ApplyPolicySpecs applies the given policy specs, creating new policies and updating the ones that
 // already exist (a policy is identified by its name).
 //
@@ -1736,13 +1785,14 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 
 	// Get the query and platforms of the current policies so that we can check if the query or platform changed later, if needed
 	type policyLite struct {
-		Name                       string `db:"name"`
-		Query                      string `db:"query"`
-		Platforms                  string `db:"platforms"`
-		SoftwareInstallerID        *uint  `db:"software_installer_id"`
-		VPPAppsTeamsID             *uint  `db:"vpp_apps_teams_id"`
-		ScriptID                   *uint  `db:"script_id"`
-		NeedsFullMembershipCleanup bool   `db:"needs_full_membership_cleanup"`
+		Name                       string  `db:"name"`
+		Query                      string  `db:"query"`
+		Platforms                  string  `db:"platforms"`
+		SoftwareInstallerID        *uint   `db:"software_installer_id"`
+		VPPAppsTeamsID             *uint   `db:"vpp_apps_teams_id"`
+		ScriptID                   *uint   `db:"script_id"`
+		NeedsFullMembershipCleanup bool    `db:"needs_full_membership_cleanup"`
+		FleetManagedKey            *string `db:"fleet_managed_key"`
 	}
 	teamIDToPoliciesByName := make(map[*uint]map[string]policyLite, len(teamIDToPolicies))
 	for teamID, teamPolicySpecs := range teamIDToPolicies {
@@ -1756,10 +1806,10 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 		var args []interface{}
 		var err error
 		if teamID == nil {
-			query, args, err = sqlx.In("SELECT name, query, platforms, software_installer_id, vpp_apps_teams_id, script_id, needs_full_membership_cleanup FROM policies WHERE team_id IS NULL AND name IN (?)", policyNames)
+			query, args, err = sqlx.In("SELECT name, query, platforms, software_installer_id, vpp_apps_teams_id, script_id, needs_full_membership_cleanup, fleet_managed_key FROM policies WHERE team_id IS NULL AND name IN (?)", policyNames)
 		} else {
 			query, args, err = sqlx.In(
-				"SELECT name, query, platforms, software_installer_id, vpp_apps_teams_id, script_id, needs_full_membership_cleanup FROM policies WHERE team_id = ? AND name IN (?)", *teamID, policyNames,
+				"SELECT name, query, platforms, software_installer_id, vpp_apps_teams_id, script_id, needs_full_membership_cleanup, fleet_managed_key FROM policies WHERE team_id = ? AND name IN (?)", *teamID, policyNames,
 			)
 		}
 		if err != nil {
@@ -1779,6 +1829,41 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 	err := ds.withRetryTxx(ctx, func(tx sqlx.ExtContext) error {
 		// Reset on retry so we don't accumulate duplicate cleanup entries.
 		pendingCleanups = pendingCleanups[:0]
+
+		// Release fleet_managed_key before upserts when a same-named spec is
+		// clearing or changing it. Without this, a later INSERT that claims the
+		// same key under a different policy name hits ON DUPLICATE KEY UPDATE on
+		// idx_policies_fleet_managed_team_key (not the name unique key), mutates
+		// the existing owner, and never surfaces a duplicate-key error.
+		for teamID, teamPolicySpecs := range teamIDToPolicies {
+			for _, spec := range teamPolicySpecs {
+				prev, ok := teamIDToPoliciesByName[teamID][spec.Name]
+				if !ok || prev.FleetManagedKey == nil || *prev.FleetManagedKey == "" {
+					continue
+				}
+				if spec.FleetManagedKey == *prev.FleetManagedKey {
+					continue
+				}
+				var err error
+				if teamID == nil {
+					_, err = tx.ExecContext(ctx, `
+						UPDATE policies SET fleet_managed_key = NULL
+						WHERE team_id IS NULL AND name = ? AND fleet_managed_key = ?`,
+						spec.Name, *prev.FleetManagedKey)
+				} else {
+					_, err = tx.ExecContext(ctx, `
+						UPDATE policies SET fleet_managed_key = NULL
+						WHERE team_id = ? AND name = ? AND fleet_managed_key = ?`,
+						*teamID, spec.Name, *prev.FleetManagedKey)
+				}
+				if err != nil {
+					return ctxerr.Wrap(ctx, err, "release fleet_managed_key before apply")
+				}
+			}
+		}
+		if err := rejectFleetManagedKeyOwnerConflicts(ctx, tx, teamIDToPolicies); err != nil {
+			return err
+		}
 
 		query := fmt.Sprintf(
 			`
@@ -1895,12 +1980,9 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 				if err != nil {
 					if IsDuplicate(err) && fleetManagedKeyArg != nil &&
 						strings.Contains(err.Error(), "idx_policies_fleet_managed_team_key") {
-						return &fleet.ConflictError{
-							Message: fmt.Sprintf(
-								"Couldn't apply. Another policy already uses fleet_managed_key %q in this fleet.",
-								*fleetManagedKeyArg,
-							),
-						}
+						// Safety net for races; the preflight above covers the
+						// normal stored-owner path that ON DUPLICATE KEY UPDATE swallows.
+						return fleetManagedKeyConflictError(*fleetManagedKeyArg)
 					}
 					return ctxerr.Wrap(ctx, err, "exec ApplyPolicySpecs insert")
 				}

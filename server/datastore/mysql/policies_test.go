@@ -106,6 +106,8 @@ func TestPolicies(t *testing.T) {
 		{"ResetPolicy", testResetPolicy},
 		{"UpdateFleetManagedPolicyQueries", testUpdateFleetManagedPolicyQueries},
 		{"ApplyPolicySpecsFleetManagedKeyUnclaim", testApplyPolicySpecsFleetManagedKeyUnclaim},
+		{"ApplyPolicySpecsFleetManagedKeyStoredOwnerConflict", testApplyPolicySpecsFleetManagedKeyStoredOwnerConflict},
+		{"ApplyPolicySpecsFleetManagedKeyTransfer", testApplyPolicySpecsFleetManagedKeyTransfer},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -9164,4 +9166,85 @@ func testApplyPolicySpecsFleetManagedKeyUnclaim(t *testing.T, ds *Datastore) {
 	require.NoError(t, err)
 	require.Nil(t, cleared.FleetManagedKey)
 	require.Equal(t, "SELECT 2;", cleared.Query)
+}
+
+func testApplyPolicySpecsFleetManagedKeyStoredOwnerConflict(t *testing.T, ds *Datastore) {
+	ctx := context.Background()
+	user := test.NewUser(t, ds, "KeyConflict", "key-conflict@example.com", true)
+
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:            "owner",
+			Query:           "SELECT 1;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSUpToDate,
+		},
+	}))
+	before, err := ds.ListGlobalPolicies(ctx, fleet.ListOptions{}, "")
+	require.NoError(t, err)
+	require.Len(t, before, 1)
+	ownerID := before[0].ID
+	require.Equal(t, "SELECT 1;", before[0].Query)
+
+	err = ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:            "other",
+			Query:           "SELECT 99;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSUpToDate,
+		},
+	})
+	var conflict *fleet.ConflictError
+	require.ErrorAs(t, err, &conflict)
+	require.Contains(t, conflict.Message, "fleet_managed_key")
+	require.Contains(t, conflict.Message, fleet.FleetManagedKeyMacOSUpToDate)
+
+	after, err := ds.ListGlobalPolicies(ctx, fleet.ListOptions{}, "")
+	require.NoError(t, err)
+	require.Len(t, after, 1)
+	require.Equal(t, ownerID, after[0].ID)
+	require.Equal(t, "owner", after[0].Name)
+	require.Equal(t, "SELECT 1;", after[0].Query)
+	require.NotNil(t, after[0].FleetManagedKey)
+	require.Equal(t, fleet.FleetManagedKeyMacOSUpToDate, *after[0].FleetManagedKey)
+}
+
+func testApplyPolicySpecsFleetManagedKeyTransfer(t *testing.T, ds *Datastore) {
+	ctx := context.Background()
+	user := test.NewUser(t, ds, "KeyTransfer", "key-transfer@example.com", true)
+
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:            "owner",
+			Query:           "SELECT 1;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSAcceptable,
+		},
+	}))
+
+	// Same apply clears the previous owner and claims the key on a new policy.
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:     "owner",
+			Query:    "SELECT 1;",
+			Platform: "darwin",
+		},
+		{
+			Name:            "new-owner",
+			Query:           "SELECT 2;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSAcceptable,
+		},
+	}))
+
+	policies, err := ds.ListGlobalPolicies(ctx, fleet.ListOptions{}, "")
+	require.NoError(t, err)
+	require.Len(t, policies, 2)
+	byName := map[string]*fleet.Policy{}
+	for _, p := range policies {
+		byName[p.Name] = p
+	}
+	require.Nil(t, byName["owner"].FleetManagedKey)
+	require.NotNil(t, byName["new-owner"].FleetManagedKey)
+	require.Equal(t, fleet.FleetManagedKeyMacOSAcceptable, *byName["new-owner"].FleetManagedKey)
 }
