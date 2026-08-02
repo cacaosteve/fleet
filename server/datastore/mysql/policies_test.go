@@ -9168,6 +9168,12 @@ func testApplyPolicySpecsFleetManagedKeyUnclaim(t *testing.T, ds *Datastore) {
 	require.Equal(t, "SELECT 2;", cleared.Query)
 }
 
+func TestFleetManagedTeamKey(t *testing.T) {
+	require.Equal(t, "global:macos_os_up_to_date", fleetManagedTeamKey(nil, fleet.FleetManagedKeyMacOSUpToDate))
+	require.Equal(t, "0:macos_os_acceptable", fleetManagedTeamKey(ptr.Uint(0), fleet.FleetManagedKeyMacOSAcceptable))
+	require.Equal(t, "42:macos_os_up_to_date", fleetManagedTeamKey(ptr.Uint(42), fleet.FleetManagedKeyMacOSUpToDate))
+}
+
 func testApplyPolicySpecsFleetManagedKeyStoredOwnerConflict(t *testing.T, ds *Datastore) {
 	ctx := context.Background()
 	user := test.NewUser(t, ds, "KeyConflict", "key-conflict@example.com", true)

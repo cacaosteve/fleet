@@ -1631,6 +1631,15 @@ func fleetManagedKeyConflictError(key string) error {
 	}
 }
 
+// fleetManagedTeamKey mirrors the generated policies.fleet_managed_team_key
+// column so locking reads can hit idx_policies_fleet_managed_team_key.
+func fleetManagedTeamKey(teamID *uint, key string) string {
+	if teamID == nil {
+		return "global:" + key
+	}
+	return fmt.Sprintf("%d:%s", *teamID, key)
+}
+
 // rejectFleetManagedKeyOwnerConflicts returns ConflictError when a spec claims a
 // fleet_managed_key already owned by a differently named policy in the same team
 // scope. Call after any same-apply releases so key transfers can succeed.
@@ -1644,19 +1653,13 @@ func rejectFleetManagedKeyOwnerConflicts(
 			if spec.FleetManagedKey == "" {
 				continue
 			}
+			// Query the generated unique key directly so FOR UPDATE locks only
+			// the owner row (or gap), not every policy in the team/global scope.
 			var ownerName string
-			var err error
-			if teamID == nil {
-				err = sqlx.GetContext(ctx, tx, &ownerName, `
-					SELECT name FROM policies
-					WHERE team_id IS NULL AND fleet_managed_key = ?
-					FOR UPDATE`, spec.FleetManagedKey)
-			} else {
-				err = sqlx.GetContext(ctx, tx, &ownerName, `
-					SELECT name FROM policies
-					WHERE team_id = ? AND fleet_managed_key = ?
-					FOR UPDATE`, *teamID, spec.FleetManagedKey)
-			}
+			err := sqlx.GetContext(ctx, tx, &ownerName, `
+				SELECT name FROM policies
+				WHERE fleet_managed_team_key = ?
+				FOR UPDATE`, fleetManagedTeamKey(teamID, spec.FleetManagedKey))
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
