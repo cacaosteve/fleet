@@ -17,7 +17,7 @@ func TestSyncMacOSCurrencyPolicies(t *testing.T) {
 
 	orig := getAssetMetadataFn
 	t.Cleanup(func() { getAssetMetadataFn = orig })
-	getAssetMetadataFn = func() (*AssetMetadata, error) {
+	getAssetMetadataFn = func(ctx context.Context) (*AssetMetadata, error) {
 		return &AssetMetadata{
 			AssetSets: AssetSets{
 				MacOS: []Asset{
@@ -65,7 +65,7 @@ func TestSyncMacOSCurrencyPoliciesPreservesCacheOnEmptyFeed(t *testing.T) {
 
 	orig := getAssetMetadataFn
 	t.Cleanup(func() { getAssetMetadataFn = orig })
-	getAssetMetadataFn = func() (*AssetMetadata, error) {
+	getAssetMetadataFn = func(ctx context.Context) (*AssetMetadata, error) {
 		return &AssetMetadata{}, nil
 	}
 

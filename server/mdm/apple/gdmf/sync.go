@@ -11,7 +11,7 @@ import (
 )
 
 // getAssetMetadataFn is overridden in tests.
-var getAssetMetadataFn = GetAssetMetadata
+var getAssetMetadataFn = GetAssetMetadataWithContext
 
 // SyncMacOSCurrencyPolicies fetches Apple's GDMF feed, refreshes
 // apple_software_update_assets for macOS, and rewrites Fleet-managed macOS
@@ -22,7 +22,7 @@ func SyncMacOSCurrencyPolicies(ctx context.Context, ds fleet.Datastore, logger *
 	}
 	logger = logger.With("component", "gdmf-macos-currency")
 
-	meta, err := getAssetMetadataFn()
+	meta, err := getAssetMetadataFn(ctx)
 	if err != nil {
 		return ctxerr.Wrap(ctx, err, "fetch GDMF asset metadata")
 	}
