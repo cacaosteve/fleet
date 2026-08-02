@@ -3475,6 +3475,13 @@
             "null"
           ]
         },
+        "fleet_managed_key": {
+          "description": "FleetManagedKey marks policies whose query Fleet owns and may rewrite\n(for example macOS OS-currency policies driven by Apple's GDMF catalog).\nEmpty means user-owned and clears any previously set key on apply.\nOwnership is never inferred from the policy name; GitOps/API must set\nthis field explicitly to one of the known Fleet-managed keys.\n\ntype: `string`",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "install_software": {
           "anyOf": [
             {
@@ -4407,7 +4414,7 @@
       "description": "MacOSSettings contains settings specific to macOS.",
       "properties": {
         "assets": {
-          "description": "Assets is a slice of Apple DDM asset (com.apple.asset) declaration file\npaths. Unlike CustomSettings, assets are not stored on the AppConfig/team\nspec: this field is only populated while parsing a GitOps file so the\nassets can be applied via their own batch endpoint. It is intentionally\nomitted from ToMap/FromMap.\n\ntype: `array\u003cMDMProfileSpec\u003e`",
+          "description": "Assets is a slice of Apple DDM asset (com.apple.asset) declaration file\npaths. Unlike CustomSettings, assets are not stored on the AppConfig/team\nspec: this field is only populated while parsing a GitOps file so the\nassets can be applied via their own batch endpoint. It is intentionally\nomitted from FromMap; ToMap includes it only so the key passes the team\nspec's strict key validation (see applyTeamSpecsRequest.DecodeBody).\n\ntype: `array\u003cMDMProfileSpec\u003e`",
           "items": {
             "$ref": "#/$defs/MDMProfileSpec"
           },
@@ -4717,6 +4724,23 @@
           "description": "type: `string`",
           "type": [
             "string",
+            "null"
+          ]
+        }
+      },
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "ManagedLocalAccountSettings": {
+      "additionalProperties": false,
+      "description": "ManagedLocalAccountSettings configures the hidden managed local admin account for one platform.",
+      "properties": {
+        "enabled": {
+          "description": "type: `boolean`",
+          "type": [
+            "boolean",
             "null"
           ]
         }
@@ -5979,6 +6003,10 @@
             "array",
             "null"
           ]
+        },
+        "managed_local_account_settings": {
+          "$ref": "#/$defs/ManagedLocalAccountSettings",
+          "description": "ManagedLocalAccountSettings configures the hidden managed local admin account created by\nfleetd on Windows hosts during Autopilot/OOBE enrollment.\n\ntype: `ManagedLocalAccountSettings`"
         }
       },
       "type": [

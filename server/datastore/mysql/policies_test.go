@@ -104,6 +104,8 @@ func TestPolicies(t *testing.T) {
 		{"RecordPolicyQueryExecutionsDeletedPolicy", testRecordPolicyQueryExecutionsDeletedPolicy},
 		{"RecordPolicyQueryExecutionsStalePolicyIDs", testRecordPolicyQueryExecutionsStalePolicyIDs},
 		{"ResetPolicy", testResetPolicy},
+		{"UpdateFleetManagedPolicyQueries", testUpdateFleetManagedPolicyQueries},
+		{"ApplyPolicySpecsFleetManagedKeyUnclaim", testApplyPolicySpecsFleetManagedKeyUnclaim},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -9087,4 +9089,79 @@ func testApplyPolicySpecFirstAddedInstaller(t *testing.T, ds *Datastore) {
 	require.Len(t, policies, 1)
 	require.NotNil(t, policies[0].SoftwareInstallerID)
 	require.Equal(t, installerA, *policies[0].SoftwareInstallerID, "GitOps must resolve to the first-added package")
+}
+
+func testUpdateFleetManagedPolicyQueries(t *testing.T, ds *Datastore) {
+	ctx := context.Background()
+	user := test.NewUser(t, ds, "ManagedKey", "managed-key@example.com", true)
+
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:            "Operating system up to date (macOS)",
+			Query:           "SELECT 0;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSUpToDate,
+		},
+	}))
+
+	policies, err := ds.ListGlobalPolicies(ctx, fleet.ListOptions{}, "")
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	require.NotNil(t, policies[0].FleetManagedKey)
+	require.Equal(t, fleet.FleetManagedKeyMacOSUpToDate, *policies[0].FleetManagedKey)
+
+	newQuery := "SELECT 1 FROM os_version WHERE major = 26;"
+	ids, err := ds.UpdateFleetManagedPolicyQueries(ctx, fleet.FleetManagedKeyMacOSUpToDate, newQuery)
+	require.NoError(t, err)
+	require.Equal(t, []uint{policies[0].ID}, ids)
+
+	updated, err := ds.Policy(ctx, policies[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, newQuery, updated.Query)
+
+	// Unclaimed policies must not be rewritten.
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:     "Operating system up to date (macOS)",
+			Query:    "SELECT 'custom';",
+			Platform: "darwin",
+		},
+	}))
+	ids, err = ds.UpdateFleetManagedPolicyQueries(ctx, fleet.FleetManagedKeyMacOSUpToDate, "SELECT 99;")
+	require.NoError(t, err)
+	require.Empty(t, ids)
+	stillCustom, err := ds.Policy(ctx, policies[0].ID)
+	require.NoError(t, err)
+	require.Equal(t, "SELECT 'custom';", stillCustom.Query)
+	require.Nil(t, stillCustom.FleetManagedKey)
+}
+
+func testApplyPolicySpecsFleetManagedKeyUnclaim(t *testing.T, ds *Datastore) {
+	ctx := context.Background()
+	user := test.NewUser(t, ds, "Unclaim", "unclaim@example.com", true)
+
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:            "acceptable",
+			Query:           "SELECT 1;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSAcceptable,
+		},
+	}))
+	policies, err := ds.ListGlobalPolicies(ctx, fleet.ListOptions{}, "")
+	require.NoError(t, err)
+	require.Len(t, policies, 1)
+	require.NotNil(t, policies[0].FleetManagedKey)
+
+	require.NoError(t, ds.ApplyPolicySpecs(ctx, user.ID, []*fleet.PolicySpec{
+		{
+			Name:     "acceptable",
+			Query:    "SELECT 2;",
+			Platform: "darwin",
+		},
+	}))
+	cleared, err := ds.Policy(ctx, policies[0].ID)
+	require.NoError(t, err)
+	require.Nil(t, cleared.FleetManagedKey)
+	require.Equal(t, "SELECT 2;", cleared.Query)
 }

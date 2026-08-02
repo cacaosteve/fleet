@@ -410,8 +410,10 @@ func (ds *Datastore) UpdateFleetManagedPolicyQueries(ctx context.Context, fleetM
 	var ids []uint
 	err := ds.withRetryTxx(ctx, func(tx sqlx.ExtContext) error {
 		ids = nil
+		// Lock matching rows so a concurrent GitOps unclaim cannot clear
+		// fleet_managed_key between select and update.
 		if err := sqlx.SelectContext(ctx, tx, &ids, `
-SELECT id FROM policies WHERE fleet_managed_key = ? AND query <> ?
+SELECT id FROM policies WHERE fleet_managed_key = ? AND query <> ? FOR UPDATE
 `, fleetManagedKey, query); err != nil {
 			return ctxerr.Wrap(ctx, err, "select Fleet-managed policies for query update")
 		}
@@ -423,13 +425,25 @@ UPDATE policies
 SET query = ?,
     checksum = `+policiesChecksumComputedColumn()+`,
     needs_full_membership_cleanup = 1
-WHERE id IN (?)
-`, query, ids)
+WHERE id IN (?) AND fleet_managed_key = ?
+`, query, ids, fleetManagedKey)
 		if err != nil {
 			return ctxerr.Wrap(ctx, err, "build update Fleet-managed policy queries")
 		}
 		if _, err := tx.ExecContext(ctx, stmt, args...); err != nil {
 			return ctxerr.Wrap(ctx, err, "update Fleet-managed policy queries")
+		}
+		// Only clean policies that still carry the key and received the new query
+		// (skips any row unclaimed between FOR UPDATE and UPDATE in edge cases).
+		confirmedStmt, confirmedArgs, err := sqlx.In(`
+SELECT id FROM policies WHERE id IN (?) AND fleet_managed_key = ? AND query = ?
+`, ids, fleetManagedKey, query)
+		if err != nil {
+			return ctxerr.Wrap(ctx, err, "build confirm Fleet-managed policy query updates")
+		}
+		ids = nil
+		if err := sqlx.SelectContext(ctx, tx, &ids, confirmedStmt, confirmedArgs...); err != nil {
+			return ctxerr.Wrap(ctx, err, "confirm Fleet-managed policy query updates")
 		}
 		for _, id := range ids {
 			if err := resetPolicyAutomationAttempts(ctx, tx, id); err != nil {
@@ -1879,6 +1893,15 @@ func (ds *Datastore) ApplyPolicySpecs(ctx context.Context, authorID uint, specs 
 					spec.Type, patchSoftwareTitleIDArg, spec.ContinuousAutomationsEnabled, fleetManagedKeyArg,
 				)
 				if err != nil {
+					if IsDuplicate(err) && fleetManagedKeyArg != nil &&
+						strings.Contains(err.Error(), "idx_policies_fleet_managed_team_key") {
+						return &fleet.ConflictError{
+							Message: fmt.Sprintf(
+								"Couldn't apply. Another policy already uses fleet_managed_key %q in this fleet.",
+								*fleetManagedKeyArg,
+							),
+						}
+					}
 					return ctxerr.Wrap(ctx, err, "exec ApplyPolicySpecs insert")
 				}
 

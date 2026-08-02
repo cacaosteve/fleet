@@ -776,6 +776,26 @@ func FirstDuplicatePolicySpecName(specs []*PolicySpec) string {
 	return ""
 }
 
+// FirstDuplicatePolicySpecFleetManagedKey returns the first duplicate
+// fleet_managed_key within a fleet (team name, including ""), or "" if none.
+func FirstDuplicatePolicySpecFleetManagedKey(specs []*PolicySpec) string {
+	teams := make(map[string]map[string]struct{})
+	for _, spec := range specs {
+		if spec.FleetManagedKey == "" {
+			continue
+		}
+		if keys, ok := teams[spec.Team]; ok {
+			if _, ok = keys[spec.FleetManagedKey]; ok {
+				return spec.FleetManagedKey
+			}
+			keys[spec.FleetManagedKey] = struct{}{}
+		} else {
+			teams[spec.Team] = map[string]struct{}{spec.FleetManagedKey: {}}
+		}
+	}
+	return ""
+}
+
 // FailingPolicySet holds sets of hosts that failed policy executions.
 type FailingPolicySet interface {
 	// ListSets lists all the policy sets.

@@ -86,6 +86,19 @@ func TestFirstFuplicatePolicySpecName(t *testing.T) {
 	}
 }
 
+func TestFirstDuplicatePolicySpecFleetManagedKey(t *testing.T) {
+	key := FleetManagedKeyMacOSUpToDate
+	require.Empty(t, FirstDuplicatePolicySpecFleetManagedKey(nil))
+	require.Empty(t, FirstDuplicatePolicySpecFleetManagedKey([]*PolicySpec{
+		{Name: "a", Team: "", FleetManagedKey: key},
+		{Name: "b", Team: "Workstations", FleetManagedKey: key},
+	}))
+	require.Equal(t, key, FirstDuplicatePolicySpecFleetManagedKey([]*PolicySpec{
+		{Name: "a", Team: "Workstations", FleetManagedKey: key},
+		{Name: "b", Team: "Workstations", FleetManagedKey: key},
+	}))
+}
+
 func TestPolicySpecVerifyFleetMaintainedAppSlug(t *testing.T) {
 	testCases := []struct {
 		name    string

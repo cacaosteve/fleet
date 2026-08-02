@@ -461,6 +461,36 @@ func TestApplyPolicySpecsReturnsErrorOnDuplicatePolicyNamesInSpecs(t *testing.T)
 	require.Equal(t, "duplicate policy names not allowed", badRequestError.Message)
 }
 
+func TestApplyPolicySpecsReturnsErrorOnDuplicateFleetManagedKey(t *testing.T) {
+	ds := new(mock.Store)
+	ds.TeamByNameFunc = func(ctx context.Context, name string) (*fleet.Team, error) {
+		return nil, &notFoundError{}
+	}
+
+	svc, ctx := newTestService(t, ds, nil, nil)
+	user := &fleet.User{GlobalRole: ptr.String(fleet.RoleAdmin)}
+	ctx = viewer.NewContext(ctx, viewer.Viewer{User: user})
+
+	err := svc.ApplyPolicySpecs(ctx, []*fleet.PolicySpec{
+		{
+			Name:            "up to date a",
+			Query:           "select 1;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSUpToDate,
+		},
+		{
+			Name:            "up to date b",
+			Query:           "select 1;",
+			Platform:        "darwin",
+			FleetManagedKey: fleet.FleetManagedKeyMacOSUpToDate,
+		},
+	})
+	badRequestError := &fleet.BadRequestError{}
+	require.ErrorAs(t, err, &badRequestError)
+	require.Contains(t, badRequestError.Message, "duplicate \"fleet_managed_key\"")
+	require.False(t, ds.ApplyPolicySpecsFuncInvoked)
+}
+
 func TestApplyPolicySpecsLabelsValidation(t *testing.T) {
 	ds := new(mock.Store)
 	ds.NewGlobalPolicyFunc = func(ctx context.Context, authorID *uint, args fleet.PolicyPayload) (*fleet.Policy, error) {
